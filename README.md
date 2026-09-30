@@ -12,7 +12,12 @@ Varje gång något ändras i `main` bygger GitHub Actions en ny APK automatiskt.
 
 Filerna i `www/` kan läggas på valfri https-sida (t.ex. Netlify Drop) om du vill använda appen i webbläsaren.
 
+## Bildmatchning (gratis, utan AI)
+
+Appen jämför kortets konstverk med ett index av bildfingeravtryck (`www/hashes.*`), så den hittar kortet även när fotot är suddigt. Indexet byggs av workflowet **Bygg kortindex** (Actions, kör för hand en gång, sedan varje månad) från gratis TCGdex-bilder och startar därefter APK-bygget. Utan indexet fungerar appen som förut med textläsning.
+
 ## Struktur
 
-- `www/` – själva appen (HTML, ikoner, manifest)
+- `www/` – själva appen (HTML, ikoner, manifest, `fingerprint.js`)
+- `tools/build-hashes.mjs` – bygger kortindexet
 - `.github/workflows/build-apk.yml` – bygger APK med Capacitor

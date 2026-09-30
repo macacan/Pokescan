@@ -410,6 +410,7 @@ dialog a{color:var(--accent);font-weight:700}
 </dialog>
 
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script src="fingerprint.js"></script>
 <script>
 (() => {
 'use strict';
@@ -954,7 +955,7 @@ $('#startCam').addEventListener('click', async () => {
     video.srcObject = stream; await video.play();
     video.hidden = false; shot.hidden = true; shot.classList.remove('fit'); $('#reScan').hidden = true; frame.hidden = false; $('#vfHint').hidden = true; $('#snap').disabled = false;
     $('#startCam').textContent = 'Stäng';
-    loadIndex();
+    loadIndex(); loadArt();
     st.textContent = '';
   } catch {
     st.textContent = 'Kameran startade inte. Tillåt kameraåtkomst, eller ladda upp ett foto från galleriet.'; st.classList.add('err');
@@ -976,7 +977,9 @@ function grabFrame(){
   return c;
 }
 $('#snap').addEventListener('click', async () => {
-  const c = grabFrame();
+  // Flera bilder efter varandra, den skarpaste används
+  let c = grabFrame(), best = sharpness(c);
+  for (let i = 0; i < 5; i++){ await new Promise(r => setTimeout(r, 80)); const f = grabFrame(), v = sharpness(f); if (v > best){ best = v; c = f; } }
   shot.classList.remove('fit'); shot.src = c.toDataURL('image/jpeg', .92); shot.hidden = false; video.hidden = true; frame.hidden = true;
   stopCamera();
   await runOcr(c);
@@ -992,7 +995,7 @@ $('#file').addEventListener('change', e => {
     shot.src = img.src; shot.classList.add('fit'); shot.hidden = false; video.hidden = true; frame.hidden = true; $('#vfHint').hidden = true;
     lastCanvas = c; $('#reScan').hidden = false; $('#ocrFields').hidden = false; $('#reScan').textContent = 'Läs av kort';
     const st = $('#scanStatus'); st.className = 'status'; st.textContent = 'Bilden är inläst. Tryck på Läs av kort.';
-    loadIndex(); getWorker().catch(() => {}); getWorker2().catch(() => {});
+    loadIndex(); loadArt(); getWorker().catch(() => {}); getWorker2().catch(() => {});
   };
   img.onerror = () => { const st = $('#scanStatus'); st.className = 'status err'; st.textContent = 'Bilden kunde inte öppnas. Prova ett annat foto (JPG eller PNG).'; };
   img.src = URL.createObjectURL(f);
@@ -1012,6 +1015,61 @@ function startFx(){
 }
 function stopFx(){ clearInterval(fxTimer); $('#scanFx').hidden = true; }
 function phase(t){ const st = $('#scanStatus'); st.className = 'status'; st.textContent = t; if (!$('#scanFx').hidden) $('#fxSub').textContent = t.replace(/\s*…$/, ''); }
+
+/* ---------- Bildmatchning mot kortindexet ---------- */
+let ART = null, artP = null;
+function loadArt(){
+  if (!artP) artP = (async () => {
+    try {
+      const [j, b] = await Promise.all([fetch('hashes.json').then(r => r.ok ? r.json() : Promise.reject()), fetch('hashes.bin').then(r => r.ok ? r.arrayBuffer() : Promise.reject())]);
+      const db = new Int8Array(b); if (db.length !== j.n * j.len) throw 0;
+      ART = { ids: j.ids, db, n: j.n };
+    } catch { ART = null; }
+    return ART;
+  })();
+  return artP;
+}
+/* Skärpa (varians av Laplace-filter) – högre = skarpare bild */
+function sharpness(c){
+  const w = 240, h = Math.max(1, Math.round(c.height * w / c.width)), t = document.createElement('canvas'); t.width = w; t.height = h;
+  const g = t.getContext('2d', { willReadFrequently: true }); g.drawImage(c, 0, 0, w, h);
+  const p = g.getImageData(0, 0, w, h).data, gr = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) gr[i] = p[i*4] * .299 + p[i*4+1] * .587 + p[i*4+2] * .114;
+  let s = 0, s2 = 0, n = 0;
+  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++){ const i = y * w + x, l = 4 * gr[i] - gr[i-1] - gr[i+1] - gr[i-w] - gr[i+w]; s += l; s2 += l * l; n++; }
+  return s2 / n - (s / n) ** 2;
+}
+/* De bästa bildträffarna för ett beskuret kort: [{id, s}] där s = likhet 0–1 (flera små förskjutningar tål snett beskuren bild) */
+async function artMatch(card){
+  const a = await loadArt(); if (!a || !window.Fingerprint) return [];
+  const FP = Fingerprint;
+  let c = card;
+  while (c.width > FP.CW * 2){ const t = document.createElement('canvas'); t.width = c.width >> 1; t.height = c.height >> 1; const g = t.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(c, 0, 0, t.width, t.height); c = t; }
+  const f = document.createElement('canvas'); f.width = FP.CW; f.height = FP.CH;
+  const fg = f.getContext('2d', { willReadFrequently: true }); fg.imageSmoothingQuality = 'high'; fg.drawImage(c, 0, 0, FP.CW, FP.CH);
+  const d = fg.getImageData(0, 0, FP.CW, FP.CH).data, best = new Map();
+  for (const [dx, dy] of [[0, 0], [.03, 0], [-.03, 0], [0, .03], [0, -.03]]){
+    for (const t of FP.match(a.db, a.n, FP.vector(FP.describe(d, FP.CW, FP.CH, 4, dx, dy)), 8)) best.set(t.i, Math.max(best.get(t.i) ?? -1, t.s));
+  }
+  return [...best].map(([i, s]) => ({ id: a.ids[i], s })).sort((x, y) => y.s - x.s).slice(0, 8);
+}
+/* Slå ihop textträffar och bildträffar: stämmer båda höjs poängen, och en mycket tydlig bildträff räknas som säker */
+function withArt(ranked, art){
+  if (!art || !art.length || !IDX.cards) return ranked;
+  if (!IDX.byId) IDX.byId = new Map(IDX.cards.map(c => [c.id, c]));
+  const m = new Map(); ranked.slice(0, 40).forEach(x => m.set(x.card.id, { ...x, art: 0 }));
+  for (const t of art){
+    const card = IDX.byId.get(t.id); if (!card) continue;
+    const e = m.get(t.id) || { card, score: 0, nsim: 0, num: false, tot: false, ev: 0, art: 0 };
+    e.art = t.s; m.set(t.id, e);
+  }
+  const out = [...m.values()];
+  for (const e of out) if (e.art > .35) e.score += (e.art - .35) * 1.5;
+  out.sort((a, b) => b.score - a.score);
+  const a = out[0], b = out[1];
+  if (a && a.art >= .85 && (!b || a.art - (b.art || 0) >= .08)){ a.num = a.tot = true; a.nsim = Math.max(a.nsim, .9); a.score += .3; }
+  return out;
+}
 
 /* ---------- OCR ---------- */
 let worker = null, workerP = null;
@@ -1209,16 +1267,24 @@ async function runOcr(canvas, uploaded){
     const crop = uploaded ? (await anchorCrop(canvas).catch(() => null)) || cropCard(canvas) : null;
     const main = crop ? upscale(crop, 1300) : canvas;
     let r = await readCard(main, true);
-    let ranked = rankCandidates(r);
+    let art = [];
+    const rank = m => withArt(rankCandidates(m), art);
+    let ranked = rank(r);
+    // Bildmatchning mot kortindexet: klarar suddiga foton där texten inte går att läsa
+    if (!strong(ranked) && (!uploaded || crop)){
+      phase('Jämför med alla kort …');
+      art = await artMatch(main).catch(() => []);
+      ranked = rank(r);
+    }
     if (!strong(ranked) && crop){
-      const rf = await readCard(canvas, true), rk = rankCandidates(rf);
+      const rf = await readCard(canvas, true), rk = rank(rf);
       if (rk.length && (!ranked.length || rk[0].score > ranked[0].score)){ r = rf; ranked = rk; }
     }
     if (!strong(ranked) && !crop){
       phase('Letar efter kortet …');
       const ac = await anchorCrop(canvas).catch(() => null);
       if (ac){
-        const ra = await readCard(upscale(ac, 1300), true), rk = rankCandidates(ra);
+        const ra = await readCard(upscale(ac, 1300), true), rk = rank(ra);
         if (rk.length && (!ranked.length || rk[0].score > ranked[0].score)){ r = ra; ranked = rk; }
       }
     }
@@ -1227,14 +1293,14 @@ async function runOcr(canvas, uploaded){
       const r2 = await readWhole(canvas);
       const merged = { name: pickName(r.name, r2.name), number: r.number || r2.number, total: r.total || r2.total, raw: (r.raw || '') + ' ' + (r2.raw || '') };
       if (validNum(r2) && !validNum(r)){ merged.number = r2.number; merged.total = r2.total; }
-      const ranked2 = rankCandidates(merged);
+      const ranked2 = rank(merged);
       if (ranked2.length && (!ranked.length || ranked2[0].score >= ranked[0].score)){ r = merged; ranked = ranked2; }
     }
     if (!strong(ranked)){
       phase('Läser noggrant …');
       const full = await readCard(main, false);
       const merged = { name: pickName(r.name, full.name), number: full.number || r.number, total: full.total || r.total, raw: (r.raw || '') + ' ' + (full.raw || '') };
-      const rk = rankCandidates(merged);
+      const rk = rank(merged);
       if (rk.length && (!ranked.length || rk[0].score >= ranked[0].score)){ r = merged; ranked = rk; }
     }
     if (!strong(ranked) && crop){
@@ -1242,14 +1308,14 @@ async function runOcr(canvas, uploaded){
       const r2 = await readWhole(canvas);
       const merged = { name: pickName(r.name, r2.name), number: r.number || r2.number, total: r.total || r2.total, raw: (r.raw || '') + ' ' + (r2.raw || '') };
       if (validNum(r2) && !validNum(r)){ merged.number = r2.number; merged.total = r2.total; }
-      const rk = rankCandidates(merged);
+      const rk = rank(merged);
       if (rk.length && (!ranked.length || rk[0].score >= ranked[0].score)){ r = merged; ranked = rk; }
     }
     // Låt animationen synas lagom länge även när avläsningen går blixtsnabbt
     const left = 900 - (Date.now() - t0); if (left > 0) await new Promise(res => setTimeout(res, left));
     fillFields(r);
     frame.classList.remove('busy');
-    if (r.name || r.number){ phase('Slår upp kortet …'); try { await finish(r, ranked); } finally { stopFx(); } }
+    if (r.name || r.number || ranked.length){ phase('Slår upp kortet …'); try { await finish(r, ranked); } finally { stopFx(); } }
     else { stopFx(); st.textContent = 'Kunde inte läsa kortet. Prova bättre ljus, eller skriv namn och nummer själv.'; st.classList.add('err'); }
   } catch (e){
     stopFx(); frame.classList.remove('busy');
