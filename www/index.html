@@ -80,8 +80,8 @@ button,input,select{font:inherit;color:inherit}
 .bar::after{content:"";position:absolute;left:0;right:0;top:0;height:50%;background:linear-gradient(rgba(255,255,255,.18),transparent);pointer-events:none}
 .bar-in{max-width:980px;margin:0 auto;display:flex;align-items:center;gap:12px;position:relative;z-index:1}
 .ball{width:34px;height:34px;border-radius:50%;flex:none;border:3px solid #fff;position:relative;
-  background:linear-gradient(#fff 0 44%,var(--ink) 44% 56%,#fff 56%);box-shadow:0 0 0 2px var(--ink);animation:wobble 4s ease-in-out infinite}
-.ball::after{content:"";position:absolute;inset:0;margin:auto;width:11px;height:11px;border-radius:50%;background:#fff;border:3px solid var(--ink)}
+  background:linear-gradient(#ee1515 0 44%,#161d3f 44% 56%,#fff 56%);box-shadow:0 0 0 2px #161d3f,0 2px 8px rgba(0,0,0,.35);animation:wobble 4s ease-in-out infinite}
+.ball::after{content:"";position:absolute;inset:0;margin:auto;width:11px;height:11px;border-radius:50%;background:#fff;border:3px solid #161d3f}
 @keyframes wobble{0%,70%,100%{transform:rotate(0)}76%{transform:rotate(-18deg)}82%{transform:rotate(14deg)}88%{transform:rotate(-8deg)}94%{transform:rotate(4deg)}}
 .brand{font:400 1.7rem/1 var(--display);letter-spacing:.03em;text-shadow:0 2px 0 var(--red-lo)}
 .brand b{color:var(--yellow);font-weight:400;-webkit-text-stroke:1px var(--red-lo)}
