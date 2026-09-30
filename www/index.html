@@ -114,6 +114,8 @@ h2{margin:0;font:400 1.3rem/1.2 var(--display);letter-spacing:.02em}
 .btn:hover{filter:brightness(1.08);transform:translateY(-1px)}
 .btn:active{transform:translateY(3px);box-shadow:0 1px 0 #262f86,0 3px 8px rgba(59,76,202,.3)}
 .btn.yellow{color:#161d3f;background:linear-gradient(180deg,#ffe066,var(--yellow));box-shadow:0 4px 0 var(--yellow-lo),0 8px 18px rgba(255,203,5,.35)}
+.btn.block{width:100%;margin-top:12px;font-size:1.05rem;padding:14px}
+.viewfinder img.fit{object-fit:contain;background:#0d1330}
 .btn.yellow:active{box-shadow:0 1px 0 var(--yellow-lo)}
 .btn.red{background:linear-gradient(180deg,var(--red-hi),var(--red));box-shadow:0 4px 0 var(--red-lo),0 8px 18px rgba(220,10,45,.3)}
 .btn.quiet{color:var(--ink);background:var(--surface-2);box-shadow:0 3px 0 var(--line);border:2px solid var(--line)}
@@ -317,6 +319,7 @@ dialog a{color:var(--accent);font-weight:700}
             Starta kameran eller ladda upp ett foto av kortet.
           </div>
         </div>
+        <button class="btn yellow block" id="reScan" type="button" hidden>Läs av kort</button>
         <div class="row" style="margin-top:12px">
           <button class="btn" id="startCam">Starta kamera</button>
           <button class="btn yellow" id="snap" disabled>Läs av nu</button>
@@ -335,7 +338,6 @@ dialog a{color:var(--accent);font-weight:700}
           <label class="field" style="flex:0 0 96px"><span>Nummer</span><input id="ocrNum" inputmode="numeric"></label>
           <label class="field" style="flex:0 0 96px"><span>Av totalt</span><input id="ocrTot" inputmode="numeric"></label>
           <button class="btn" id="ocrGo">Sök</button>
-          <button class="btn quiet" id="reScan" type="button" hidden>Läs bilden igen</button>
         </div>
         <p class="status" id="scanStatus" role="status"></p>
       </div>
@@ -784,7 +786,22 @@ $('#searchForm').addEventListener('submit', async e => {
 });
 
 /* ---------- Kortindex (alla kort lokalt, för snabb och tolerant matchning) ---------- */
-const IDX = { cards: null, sets: null, lang: null, loading: null };
+const IDX = { cards: null, sets: null, lang: null, loading: null, totals: new Set() };
+function markTotals(){ IDX.totals = new Set(Object.values(IDX.sets || {}).map(x => x.official).filter(Boolean)); }
+/* Finns numret/totalen ens i något set? Filtrerar bort felläsningar direkt. */
+function validNum(n){
+  if (!n || !n.number || !n.total) return false;
+  if (!IDX.cards) return true;
+  const t = parseInt(n.total, 10);
+  return IDX.totals.has(t) || !/^\d+$/.test(n.total);
+}
+/* Hur många kort i alla set har exakt detta nummer + total? 1 = entydigt, då behövs inget namn. */
+function uniqueByNumber(n){
+  if (!IDX.cards || !validNum(n)) return false;
+  const t = parseInt(n.total, 10); let k = 0;
+  for (const c of IDX.cards){ if (sameNum(c.localId, n.number) && IDX.sets[c.set]?.official === t && ++k > 1) return false; }
+  return k === 1;
+}
 const idb = {
   open(){ return new Promise((res, rej) => { const r = indexedDB.open('pokescan', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
   async get(k){ try { const db = await this.open(); return await new Promise(res => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => res(null); }); } catch { return null; } },
@@ -795,16 +812,16 @@ function loadIndex(){
   IDX.lang = LANG; IDX.cards = null;
   IDX.loading = (async () => {
     const key = 'index-' + LANG, cached = await idb.get(key);
-    if (cached && Date.now() - cached.t < 7 * 864e5){ IDX.cards = cached.cards; IDX.sets = cached.sets; return true; }
+    if (cached && Date.now() - cached.t < 7 * 864e5){ IDX.cards = cached.cards; IDX.sets = cached.sets; markTotals(); return true; }
     try {
       const [cards, sets] = await Promise.all([api('/cards', 1), api('/sets', 1)]);
       const setMap = {};
       sets.forEach(s => setMap[s.id] = { name: s.name, official: s.cardCount?.official, total: s.cardCount?.total });
       IDX.cards = cards.map(c => ({ id: c.id, name: c.name, localId: c.localId, image: c.image, set: c.id.slice(0, c.id.lastIndexOf('-')), key: normName(c.name) }));
-      IDX.sets = setMap;
+      IDX.sets = setMap; markTotals();
       idb.set(key, { t: Date.now(), cards: IDX.cards, sets: IDX.sets });
       return true;
-    } catch { if (cached){ IDX.cards = cached.cards; IDX.sets = cached.sets; return true; } return false; }
+    } catch { if (cached){ IDX.cards = cached.cards; IDX.sets = cached.sets; markTotals(); return true; } return false; }
     finally { IDX.loading = null; }
   })();
   return IDX.loading;
@@ -834,6 +851,14 @@ function nameSim(ocr, key){
 /* Rangordna kort mot det som lästes av. Returnerar [{card, score, nsim, num, tot}] */
 /* Sifferföljder ur texten nere på kortet, även när "049/203" lästs fel som t.ex. "D0ss2030" */
 function digitRuns(raw){ return (cleanNum(raw || '').match(/\d{2,}/g) || []); }
+/* Hur väl liknar en avläst text något riktigt kortnamn? (0–1) */
+function nameQuality(nm){
+  if (!nm || !IDX.cards) return 0;
+  const n = normName(nm); let best = 0;
+  for (const e of names()){ if (Math.abs(e.key.length - n.length) > 10) continue; const v = nameSim(n, e.key); if (v > best) best = v; if (best >= .99) break; }
+  return best;
+}
+function pickName(a, b){ return nameQuality(b) > nameQuality(a) ? b : a; }
 function rankCandidates({ name, number, total, raw }){
   if (!IDX.cards) return [];
   const n = normName(name), num = String(number || '').toUpperCase(), tot = total ? parseInt(total, 10) : null;
@@ -873,6 +898,14 @@ function confident(r){
   if (a.tot && a.nsim >= .85 && (!b || a.score - b.score > .2)) return true;
   return false;
 }
+/* Säker träff = numret och setets totalsiffra stämmer (och namnet, om det lästes) */
+function strong(r){
+  if (!r.length) return false;
+  const a = r[0], b = r[1];
+  if (!(a.num && a.tot)) return false;
+  if (b && b.num && b.tot && a.score - b.score < .08) return false; // två set med samma nummer/total: kräv namn
+  return a.nsim >= .6 || a.nsim === 0 || !b || a.score - b.score > .12;
+}
 async function showCandidates(ranked, total){
   const my = ++gen; skeleton();
   const top = ranked.slice(0, 48).map(r => r.card);
@@ -895,6 +928,7 @@ function stopCamera(){
   $('#startCam').textContent = 'Starta kamera';
 }
 $('#startCam').addEventListener('click', async () => {
+  getWorker().catch(() => {});
   const st = $('#scanStatus'); st.className = 'status';
   if (stream){ stopCamera(); video.hidden = true; frame.hidden = true; $('#vfHint').hidden = false; st.textContent = ''; return; }
   try {
@@ -904,7 +938,7 @@ $('#startCam').addEventListener('click', async () => {
     const caps = track.getCapabilities ? track.getCapabilities() : {};
     $('#torch').hidden = !caps.torch;
     video.srcObject = stream; await video.play();
-    video.hidden = false; shot.hidden = true; frame.hidden = false; $('#vfHint').hidden = true; $('#snap').disabled = false;
+    video.hidden = false; shot.hidden = true; shot.classList.remove('fit'); $('#reScan').hidden = true; frame.hidden = false; $('#vfHint').hidden = true; $('#snap').disabled = false;
     $('#startCam').textContent = 'Stäng kamera';
     loadIndex();
     startAuto();
@@ -942,7 +976,7 @@ function startAuto(){
         if (!autoOn) return;
         let ranked = rankCandidates(r);
         // Var fjärde bild utan säker träff: grundlig avläsning (fler zoner + hela bilden)
-        if (!confident(ranked) && ticks % 4 === 0){
+        if (!strong(ranked) && ticks % 4 === 0){
           $('#autoChip').textContent = 'Läser noggrant …';
           const full = await readCard(fr, false); if (!autoOn) return;
           const whole = await readWhole(fr); if (!autoOn) return;
@@ -954,7 +988,7 @@ function startAuto(){
         const key = ranked[0] ? ranked[0].card.id : '';
         if (r.name || r.number) $('#autoChip').textContent = `Ser: ${[r.name, r.number && r.number + (r.total ? '/' + r.total : '')].filter(Boolean).join(' · ')}`;
         // Godkänn direkt vid säker träff, annars när två bilder i rad ger samma kort
-        if (key && (confident(ranked) || (key === lastKey && ranked[0].score > .55))){
+        if (key && (strong(ranked) || (confident(ranked) && key === lastKey) || (key === lastKey && ranked[0].score > .8))){
           autoOn = false;
           navigator.vibrate?.(60);
           const c = grabFrame(); shot.src = c.toDataURL('image/jpeg', .9);
@@ -973,7 +1007,7 @@ function startAuto(){
 $('#snap').addEventListener('click', async () => {
   autoOn = false; clearTimeout(autoTimer);
   const c = grabFrame();
-  shot.src = c.toDataURL('image/jpeg', .92); shot.hidden = false; video.hidden = true; frame.hidden = true;
+  shot.classList.remove('fit'); shot.src = c.toDataURL('image/jpeg', .92); shot.hidden = false; video.hidden = true; frame.hidden = true;
   stopCamera();
   await runOcr(c);
 });
@@ -985,9 +1019,10 @@ $('#file').addEventListener('change', e => {
     const max = 2400, k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
     const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
     c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-    shot.src = img.src; shot.hidden = false; video.hidden = true; frame.hidden = true; $('#vfHint').hidden = true;
-    lastCanvas = c; $('#reScan').hidden = false; $('#ocrFields').hidden = false;
-    runOcr(c, true);
+    shot.src = img.src; shot.classList.add('fit'); shot.hidden = false; video.hidden = true; frame.hidden = true; $('#vfHint').hidden = true;
+    lastCanvas = c; $('#reScan').hidden = false; $('#ocrFields').hidden = false; $('#reScan').textContent = 'Läs av kort';
+    const st = $('#scanStatus'); st.className = 'status'; st.textContent = 'Bilden är inläst. Tryck på Läs av kort.';
+    loadIndex(); getWorker().catch(() => {});
   };
   img.onerror = () => { const st = $('#scanStatus'); st.className = 'status err'; st.textContent = 'Bilden kunde inte öppnas. Prova ett annat foto (JPG eller PNG).'; };
   img.src = URL.createObjectURL(f);
@@ -1068,26 +1103,28 @@ async function ocr(w, img, psm, wl){
 async function readCard(canvas, quick){
   const w = await getWorker(), W = canvas.width, H = canvas.height;
   const res = { name: '', number: '', total: '', raw: '' };
-  // Nummer: smal remsa nere till vänster (de flesta kort sedan 2011), sedan bredare zoner och nere till höger (äldre kort)
   const numWL = '0123456789/ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  // Smala remsor: rad 1 = Sword & Shield-eran (~90 % ner), rad 2 = Scarlet & Violet (~95 %), höger = äldre kort
-  const strips = [[0, H * .865, W * .52, H * .075, 160, '6'], [0, H * .9, W * .52, H * .075, 160, '6'], [0, H * .925, W * .52, H * .075, 160, '6'], [W * .48, H * .92, W * .52, H * .08, 160, '6']];
-  const regions = quick ? strips : [...strips, [0, H * .875, W * .5, H * .1, 200, '6'], [0, H * .85, W * .6, H * .15, 220, '6'], [W * .4, H * .88, W * .6, H * .12, 180, '6']];
-  const modes = quick ? ['gray', 'bin'] : ['gray', 'bin', 'inv'];
-  outer: for (const [x, y, rw, rh, th, psm] of regions) for (const m of modes){
+  // 1) En enda bred remsa nere till vänster täcker både Sword & Shield- och Scarlet & Violet-layouten.
+  // 2) Smalare remsor och höger sida (äldre kort) bara om det behövs.
+  const regions = [[0, H * .84, W * .55, H * .16, 200, '6'], [0, H * .865, W * .52, H * .075, 160, '6'], [0, H * .91, W * .52, H * .075, 160, '6'], [W * .45, H * .9, W * .55, H * .1, 170, '6']];
+  if (!quick) regions.push([0, H * .85, W * .6, H * .15, 220, '6'], [W * .4, H * .88, W * .6, H * .12, 180, '6']);
+  const modes = ['bin', 'gray', 'inv'];
+  let found = false;
+  outer: for (const [x, y, rw, rh, th, psm] of regions) for (const m of (quick && th !== 200 ? ['bin', 'gray'] : modes)){
     const r = await ocr(w, prep(canvas, x, y, rw, rh, th, m), psm, numWL);
     res.raw += ' ' + r.text;
     const n = parseNumber(r.text);
-    if (n && n.number && n.total){ res.number = n.number; res.total = n.total; break outer; }
+    if (n && validNum(n)){ res.number = n.number; res.total = n.total; found = true; break outer; }
     if (n && n.number && !res.number){ res.number = n.number; res.total = n.total; }
   }
-  // Namn: översta raden, till vänster om HP
+  // Namn behövs bara om numret inte pekar ut ett enda kort
+  if (found && uniqueByNumber(res)) return res;
   let bestConf = 0;
-  for (const m of (quick ? ['bin', 'inv'] : ['bin', 'inv', 'gray'])){
+  for (const m of (quick ? ['bin'] : ['bin', 'inv', 'gray'])){
     const r = await ocr(w, prep(canvas, W * .04, H * .025, W * .7, H * .09, 110, m), '7', "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzéÉ'’.- ");
     const nm = parseName(r.text);
     if (nm.length >= 3 && r.conf > bestConf){ bestConf = r.conf; res.name = nm; }
-    if (bestConf > 80) break;
+    if (bestConf > 75) break;
   }
   return res;
 }
@@ -1127,16 +1164,23 @@ async function runOcr(canvas, uploaded){
   try {
     await Promise.race([loadIndex(), new Promise(r => setTimeout(r, 15000))]);
     canvas = upscale(canvas, 1300);
-    // Uppladdat foto: kortet kan ligga var som helst i bilden, så läs hela bilden först.
-    let r = uploaded ? await readWhole(canvas) : await readCard(canvas, false);
+    // Snabb väg först: kortets nedre hörn (funkar när kortet fyller det mesta av bilden).
+    let r = await readCard(canvas, true);
     let ranked = rankCandidates(r);
-    if (!confident(ranked)){
-      st.textContent = uploaded ? 'Läser kortets hörn …' : 'Letar i hela bilden …';
-      const r2 = uploaded ? await readCard(canvas, false) : await readWhole(canvas);
-      const merged = { name: r.name || r2.name, number: r.number || r2.number, total: r.total || r2.total, raw: (r.raw || '') + ' ' + (r2.raw || '') };
-      if (!merged.total && r2.total && r2.number){ merged.number = r2.number; merged.total = r2.total; }
+    if (!strong(ranked)){
+      st.textContent = 'Letar i hela bilden …';
+      const r2 = await readWhole(canvas);
+      const merged = { name: pickName(r.name, r2.name), number: r.number || r2.number, total: r.total || r2.total, raw: (r.raw || '') + ' ' + (r2.raw || '') };
+      if (validNum(r2) && !validNum(r)){ merged.number = r2.number; merged.total = r2.total; }
       const ranked2 = rankCandidates(merged);
       if (ranked2.length && (!ranked.length || ranked2[0].score >= ranked[0].score)){ r = merged; ranked = ranked2; }
+    }
+    if (!strong(ranked)){
+      st.textContent = 'Läser noggrant …';
+      const full = await readCard(canvas, false);
+      const merged = { name: pickName(r.name, full.name), number: full.number || r.number, total: full.total || r.total, raw: (r.raw || '') + ' ' + (full.raw || '') };
+      const rk = rankCandidates(merged);
+      if (rk.length && (!ranked.length || rk[0].score >= ranked[0].score)){ r = merged; ranked = rk; }
     }
     fillFields(r);
     frame.classList.remove('busy');
@@ -1151,16 +1195,16 @@ async function runOcr(canvas, uploaded){
 async function finish(r, ranked){
   const st = $('#scanStatus'); st.className = 'status';
   if (ranked && ranked.length){
-    const good = confident(ranked) ? ranked.slice(0, 1) : ranked.filter(x => x.score >= ranked[0].score - .15);
+    const good = strong(ranked) ? ranked.slice(0, 1) : ranked.filter(x => x.score >= ranked[0].score - .15).slice(0, 8);
     if (good.length === 1){ const c = good[0].card; $('#ocrName').value = c.name; $('#ocrNum').value = c.localId; $('#ocrTot').value = IDX.sets[c.set]?.official || $('#ocrTot').value; }
     const n = await showCandidates(good, null);
-    if (n === 1) showDetail(list[0]);
-    st.textContent = n === 1 ? 'Hittade kortet.' : 'Flera möjliga kort. Välj rätt nedan.';
+    if (n === 1 && strong(ranked)) showDetail(list[0]);
+    st.textContent = n === 1 && strong(ranked) ? 'Hittade kortet.' : 'Osäker träff – tryck på rätt kort nedan.';
     return;
   }
   await lookup();
 }
-$('#reScan').addEventListener('click', () => { if (lastCanvas) runOcr(lastCanvas, true); });
+$('#reScan').addEventListener('click', async () => { if (!lastCanvas) return; const b = $('#reScan'); b.disabled = true; try { await runOcr(lastCanvas, true); } finally { b.disabled = false; b.textContent = 'Läs av igen'; } });
 attachSuggest($('#ocrName'), () => $('#ocrGo').click());
 attachSuggest($('#qName'), () => $('#searchForm').requestSubmit());
 $('#ocrName').addEventListener('keydown', e => { if (e.key === 'Enter' && $('#ocrName').parentElement.querySelector('.suggest').hidden){ e.preventDefault(); $('#ocrGo').click(); } });
