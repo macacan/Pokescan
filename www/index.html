@@ -832,20 +832,34 @@ function nameSim(ocr, key){
   return best;
 }
 /* Rangordna kort mot det som lästes av. Returnerar [{card, score, nsim, num, tot}] */
-function rankCandidates({ name, number, total }){
+/* Sifferföljder ur texten nere på kortet, även när "049/203" lästs fel som t.ex. "D0ss2030" */
+function digitRuns(raw){ return (cleanNum(raw || '').match(/\d{2,}/g) || []); }
+function rankCandidates({ name, number, total, raw }){
   if (!IDX.cards) return [];
   const n = normName(name), num = String(number || '').toUpperCase(), tot = total ? parseInt(total, 10) : null;
+  const runs = digitRuns(raw);
   const out = [];
   for (const c of IDX.cards){
     const numOk = num && sameNum(c.localId, num);
     if (num && !numOk && !n) continue;
     const s = IDX.sets[c.set] || {};
-    const totOk = tot != null && (s.official === tot || s.total === tot);
+    const totOk = tot != null && s.official === tot; // tryckt nummer är alltid NNN/officiellt antal
     const nsim = n ? nameSim(n, c.key) : 0;
     if (!numOk && nsim < .72) continue;
     let score = nsim * .55 + (numOk ? .3 : 0) + (totOk ? .25 : 0);
     if (!n && numOk) score += .2;
-    out.push({ card: c, score, nsim, num: numOk, tot: totOk });
+    // Delvis felläst nummer: leta kortets nummer (049) och setets storlek (203) i siffrorna
+    let ev = 0;
+    // En siffra fel (029 i stället för 049) ger delpoäng
+    if (!numOk && num && /^\d+$/.test(num) && /^\d+$/.test(c.localId) && tot != null && totOk &&
+        lev(c.localId.padStart(3, '0'), num.padStart(3, '0')) === 1){ score += .18; ev++; }
+    if (runs.length && !numOk){
+      const pad = /^\d+$/.test(c.localId) ? c.localId.padStart(3, '0') : '';
+      if (pad && runs.some(r => r.includes(pad))) ev++;
+      if (s.official && runs.some(r => r.includes(String(s.official)))) ev++;
+      score += ev * .13;
+    }
+    out.push({ card: c, score, nsim, num: numOk, tot: totOk, ev });
   }
   return out.sort((a, b) => b.score - a.score);
 }
@@ -855,6 +869,8 @@ function confident(r){
   const gap = !b || a.score - b.score > .12;
   if (a.num && a.tot && (a.nsim >= .5 || gap)) return true;
   if (a.num && a.nsim >= .8 && gap) return true;
+  if (a.ev >= 2 && a.nsim >= .8 && gap) return true;
+  if (a.tot && a.nsim >= .85 && (!b || a.score - b.score > .2)) return true;
   return false;
 }
 async function showCandidates(ranked, total){
@@ -912,7 +928,7 @@ function grabFrame(){
   return c;
 }
 function startAuto(){
-  autoOn = true; lastKey = '';
+  autoOn = true; lastKey = ''; let ticks = 0;
   $('#autoChip').hidden = false; $('#autoChip').textContent = 'Letar efter kort …';
   $('#scanStatus').className = 'status'; $('#scanStatus').textContent = 'Håll kortet inom hörnen. Appen läser av automatiskt.';
   const tick = async () => {
@@ -920,9 +936,21 @@ function startAuto(){
     if (!autoBusy && video.readyState >= 2){
       autoBusy = true;
       try {
-        const r = await readCard(grabFrame(), true);
+        ticks++;
+        const fr = upscale(grabFrame(), 1300);
+        let r = await readCard(fr, true);
         if (!autoOn) return;
-        const ranked = rankCandidates(r);
+        let ranked = rankCandidates(r);
+        // Var fjärde bild utan säker träff: grundlig avläsning (fler zoner + hela bilden)
+        if (!confident(ranked) && ticks % 4 === 0){
+          $('#autoChip').textContent = 'Läser noggrant …';
+          const full = await readCard(fr, false); if (!autoOn) return;
+          const whole = await readWhole(fr); if (!autoOn) return;
+          const m = { name: r.name || full.name || whole.name, number: full.number || whole.number || r.number,
+            total: full.total || whole.total || r.total, raw: [r.raw, full.raw, whole.raw].join(' ') };
+          const rk = rankCandidates(m);
+          if (rk.length && (!ranked.length || rk[0].score >= ranked[0].score)){ r = m; ranked = rk; }
+        }
         const key = ranked[0] ? ranked[0].card.id : '';
         if (r.name || r.number) $('#autoChip').textContent = `Ser: ${[r.name, r.number && r.number + (r.total ? '/' + r.total : '')].filter(Boolean).join(' · ')}`;
         // Godkänn direkt vid säker träff, annars när två bilder i rad ger samma kort
@@ -1039,15 +1067,19 @@ async function ocr(w, img, psm, wl){
 /* Läser namn och nummer ur en kortbild. quick = färre varianter (för autoläge). */
 async function readCard(canvas, quick){
   const w = await getWorker(), W = canvas.width, H = canvas.height;
-  const res = { name: '', number: '', total: '' };
-  // Nummer: nere till vänster (nyare kort) och nere till höger (äldre kort)
+  const res = { name: '', number: '', total: '', raw: '' };
+  // Nummer: smal remsa nere till vänster (de flesta kort sedan 2011), sedan bredare zoner och nere till höger (äldre kort)
   const numWL = '0123456789/ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const regions = [[0, H * .88, W * .6, H * .12], [W * .4, H * .88, W * .6, H * .12]];
-  const modes = quick ? ['bin', 'inv'] : ['bin', 'inv', 'gray'];
-  outer: for (const [x, y, rw, rh] of regions) for (const m of modes){
-    const r = await ocr(w, prep(canvas, x, y, rw, rh, 140, m), '6', numWL);
+  // Smala remsor: rad 1 = Sword & Shield-eran (~90 % ner), rad 2 = Scarlet & Violet (~95 %), höger = äldre kort
+  const strips = [[0, H * .865, W * .52, H * .075, 160, '6'], [0, H * .9, W * .52, H * .075, 160, '6'], [0, H * .925, W * .52, H * .075, 160, '6'], [W * .48, H * .92, W * .52, H * .08, 160, '6']];
+  const regions = quick ? strips : [...strips, [0, H * .875, W * .5, H * .1, 200, '6'], [0, H * .85, W * .6, H * .15, 220, '6'], [W * .4, H * .88, W * .6, H * .12, 180, '6']];
+  const modes = quick ? ['gray', 'bin'] : ['gray', 'bin', 'inv'];
+  outer: for (const [x, y, rw, rh, th, psm] of regions) for (const m of modes){
+    const r = await ocr(w, prep(canvas, x, y, rw, rh, th, m), psm, numWL);
+    res.raw += ' ' + r.text;
     const n = parseNumber(r.text);
-    if (n && n.number){ res.number = n.number; res.total = n.total; break outer; }
+    if (n && n.number && n.total){ res.number = n.number; res.total = n.total; break outer; }
+    if (n && n.number && !res.number){ res.number = n.number; res.total = n.total; }
   }
   // Namn: översta raden, till vänster om HP
   let bestConf = 0;
@@ -1059,12 +1091,22 @@ async function readCard(canvas, quick){
   }
   return res;
 }
+/* Förstora små bilder så att det lilla kortnumret går att läsa */
+function upscale(src, minW){
+  if (src.width >= minW) return src;
+  const k = Math.min(5, minW / src.width), c = document.createElement('canvas');
+  c.width = Math.round(src.width * k); c.height = Math.round(src.height * k);
+  const g = c.getContext('2d'); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+  g.drawImage(src, 0, 0, c.width, c.height); return c;
+}
 /* Helbildsläge för uppladdade foton där kortet inte fyller bilden */
 async function readWhole(canvas){
   const w = await getWorker();
-  const res = { name: '', number: '', total: '' };
+  const res = { name: '', number: '', total: '', raw: '' };
+  const tH = Math.min(3200, Math.max(canvas.height * 1.3, canvas.height * 1600 / canvas.width));
   for (const m of ['gray', 'bin']){
-    const r = await ocr(w, prep(canvas, 0, 0, canvas.width, canvas.height, Math.min(2400, canvas.height * 1.5), m), '11');
+    const r = await ocr(w, prep(canvas, 0, 0, canvas.width, canvas.height, tH, m), '11');
+    res.raw += ' ' + r.text.split('\n').filter(l => /\/|\d{4,}/.test(l)).join(' ');
     const n = parseNumber(r.text);
     if (n && !res.number){ res.number = n.number; res.total = n.total; }
     if (!res.name && IDX.cards){
@@ -1074,7 +1116,7 @@ async function readWhole(canvas){
       for (const wd of words){ const nw = normName(wd); for (const c of IDX.cards){ if (Math.abs(c.key.length - nw.length) > 8) continue; const s = nameSim(nw, c.key); if (s > best.s){ best = { s, w: wd }; } } }
       if (best.s >= .8) res.name = best.w;
     }
-    if (res.number && res.name) break;
+    if (res.number && res.total && res.name) break;
   }
   return res;
 }
@@ -1084,13 +1126,15 @@ async function runOcr(canvas, uploaded){
   frame.classList.add('busy'); $('#ocrFields').hidden = false;
   try {
     await Promise.race([loadIndex(), new Promise(r => setTimeout(r, 15000))]);
+    canvas = upscale(canvas, 1300);
     // Uppladdat foto: kortet kan ligga var som helst i bilden, så läs hela bilden först.
     let r = uploaded ? await readWhole(canvas) : await readCard(canvas, false);
     let ranked = rankCandidates(r);
     if (!confident(ranked)){
       st.textContent = uploaded ? 'Läser kortets hörn …' : 'Letar i hela bilden …';
       const r2 = uploaded ? await readCard(canvas, false) : await readWhole(canvas);
-      const merged = { name: r.name || r2.name, number: r.number || r2.number, total: r.total || r2.total };
+      const merged = { name: r.name || r2.name, number: r.number || r2.number, total: r.total || r2.total, raw: (r.raw || '') + ' ' + (r2.raw || '') };
+      if (!merged.total && r2.total && r2.number){ merged.number = r2.number; merged.total = r2.total; }
       const ranked2 = rankCandidates(merged);
       if (ranked2.length && (!ranked.length || ranked2[0].score >= ranked[0].score)){ r = merged; ranked = ranked2; }
     }
