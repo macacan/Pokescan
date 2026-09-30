@@ -1156,7 +1156,7 @@ let stream = null, track = null, torchOn = false, torchOK = true;
 let autoOn = false, autoBusy = false, autoTimer = null, lastKey = '', fails = 0;
 const video = $('#video'), shot = $('#shot'), frame = $('#frame');
 function stopCamera(){
-  autoOn = false; clearTimeout(autoTimer); $('#autoChip').hidden = true;
+  autoOn = false; clearTimeout(autoTimer); $('#autoChip').hidden = true; torchOn = false; triedSwitch = false; $('#torch').classList.remove('on');
   stream?.getTracks().forEach(t => t.stop()); stream = null; track = null;
   $('#torch').hidden = true; $('#snap').disabled = true;
   $('#startCam').textContent = 'Kamera';
@@ -1181,10 +1181,46 @@ $('#startCam').addEventListener('click', async () => {
     st.textContent = 'Kameran startade inte. Tillåt kameraåtkomst, eller ladda upp ett foto från galleriet.'; st.classList.add('err');
   }
 });
+/* Blixt: många telefoner har blixt bara på huvudkameran och visar den inte alltid som möjlig, så vi provar flera vägar */
+let triedSwitch = false;
+async function setTorch(on){
+  // "advanced" ignoreras tyst om blixt saknas, så vi kontrollerar att kameran verkligen rapporterar att den lyser
+  for (const c of [{ advanced: [{ torch: on }] }, { torch: on }]){
+    try { await track.applyConstraints(c); if ((track.getSettings ? track.getSettings().torch : undefined) === on) return true; } catch {}
+  }
+  return false;
+}
+/* Byt till en bakre kamera som har blixt (huvudkameran), annars tillbaka till den vi hade */
+async function switchToTorchCamera(){
+  const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput' && !/front|user|fram/i.test(d.label));
+  const curId = track.getSettings().deviceId, order = [...devs.filter(d => d.deviceId !== curId), ...devs.filter(d => d.deviceId === curId)];
+  stream.getTracks().forEach(t => t.stop());
+  let found = false;
+  for (const d of order){
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: d.deviceId }, width: { ideal: 2560 }, height: { ideal: 1440 } }, audio: false });
+      const t = s.getVideoTracks()[0], ok = !!(t.getCapabilities && t.getCapabilities().torch);
+      if (ok || d.deviceId === curId){
+        stream = s; track = t; video.srcObject = s; await video.play();
+        try { await t.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch {}
+        found = ok; break;
+      }
+      s.getTracks().forEach(x => x.stop());
+    } catch {}
+  }
+  return found;
+}
 $('#torch').addEventListener('click', async () => {
-  if (!torchOK){ const st = $('#scanStatus'); st.className = 'status err'; st.textContent = 'Blixten stöds inte av kameran i den här telefonen.'; return; }
-  torchOn = !torchOn;
-  try { await track.applyConstraints({ advanced: [{ torch: torchOn }] }); $('#torch').classList.toggle('on', torchOn); } catch { torchOn = false; const st = $('#scanStatus'); st.className = 'status err'; st.textContent = 'Blixten stöds inte av kameran i den här telefonen.'; }
+  const st = $('#scanStatus'), btn = $('#torch'); if (!track) return;
+  const want = !torchOn;
+  let ok = await setTorch(want);
+  if (!ok && want && !triedSwitch){
+    triedSwitch = true; st.className = 'status'; st.textContent = 'Söker kamera med blixt …';
+    try { if (await switchToTorchCamera()) ok = await setTorch(want); } catch {}
+    st.textContent = '';
+  }
+  if (ok){ torchOn = want; btn.classList.toggle('on', torchOn); }
+  else { torchOn = false; btn.classList.remove('on'); st.className = 'status err'; st.textContent = 'Blixten går inte att tända från kameran i appen på den här telefonen. Tänd ficklampan i telefonens snabbmeny, eller gå till bättre ljus.'; }
 });
 function grabFrame(){
   const vw = video.videoWidth, vh = video.videoHeight;
