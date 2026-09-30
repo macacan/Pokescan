@@ -350,6 +350,7 @@ dialog[open]{animation:rise .35s cubic-bezier(.2,1.3,.4,1)}
 dialog::backdrop{background:rgba(6,10,30,.6);backdrop-filter:blur(3px)}
 dialog p{color:var(--ink-2);font-size:.9rem;margin:6px 0 14px}
 dialog a{color:var(--accent);font-weight:700}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:100;background:rgba(14,18,48,.94);color:#fff;font-weight:800;font-size:.9rem;padding:10px 18px;border-radius:999px;box-shadow:0 8px 24px rgba(0,0,0,.4);max-width:calc(100% - 32px);text-align:center;animation:rise .25s both}
 .wipe-name{font:400 2rem var(--display);text-align:center;letter-spacing:.03em;padding:10px;margin:0 0 12px;border-radius:14px;background:var(--surface-2);border:2px dashed var(--bad);color:var(--bad);user-select:none;-webkit-user-select:none}
 .dlg-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
 .foot{max-width:980px;margin:8px auto 0;padding:0 16px;font-size:.78rem;color:var(--ink-3)}
@@ -471,6 +472,8 @@ dialog a{color:var(--accent);font-weight:700}
   </section>
 </main>
 <p class="foot">Kortdata och priser från TCGdex. Priser är Cardmarket (EUR) omräknade till SEK och gäller ungefär Near Mint. Andra skick är uppskattade avdrag. Se dem som en riktpunkt.</p>
+
+<div class="toast" id="toast" role="status" hidden></div>
 
 <dialog id="wipeDlg" aria-labelledby="wipeTitle">
   <h2 id="wipeTitle">Rensa hela samlingen?</h2>
@@ -1876,6 +1879,33 @@ document.querySelectorAll('#collView button').forEach(b => b.addEventListener('c
 document.querySelectorAll('#dexF button').forEach(b => b.addEventListener('click', () => {
   document.querySelectorAll('#dexF button').forEach(x => x.setAttribute('aria-pressed', x === b)); dexF = b.dataset.f; renderDex();
 }));
+
+/* ---------- Bakåtknappen: stänger saker i tur och ordning men avslutar inte appen av misstag ---------- */
+let toastT = null;
+function toast(t){ const el = $('#toast'); el.textContent = t; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { el.hidden = true; }, 2000); }
+let lastBack = 0;
+try { history.replaceState({ root: 1 }, ''); history.pushState({ guard: 1 }, ''); } catch {}
+window.addEventListener('popstate', e => {
+  const st = e.state || {};
+  if (!st.root) return;                      // vi landade på vaktposten: en uppslagsruta stängdes av sin egen hantering
+  let handled = true;
+  const open = [...document.querySelectorAll('dialog[open]')].pop();
+  if (open && open !== sheet) open.close();
+  else if (stream){ $('#startCam').click(); }
+  else if ($('#tab-scan').hidden){ showTab('scan'); }
+  else if (!$('#shot').hidden){ $('#shot').hidden = true; $('#vfHint').hidden = false; $('#reScan').hidden = true; $('#scanStatus').textContent = ''; }
+  else handled = false;
+  if (!handled){
+    // Startsidan: första trycket visar en uppmaning, andra trycket inom 2 sekunder avslutar
+    if (Date.now() - lastBack < 2000){
+      const app = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.App;
+      if (app && app.exitApp){ app.exitApp(); return; }
+      return;                                // utan plugin: nästa tryck lämnar sidan
+    }
+    lastBack = Date.now(); toast('Tryck bakåt igen för att avsluta');
+  }
+  try { history.pushState({ guard: 1 }, ''); } catch {}
+});
 
 /* ---------- Inställningar ---------- */
 const dlg = $('#settings');
