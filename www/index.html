@@ -86,7 +86,7 @@ button,input,select{font:inherit;color:inherit}
 .brand{font:400 1.7rem/1 var(--display);letter-spacing:.03em;text-shadow:0 2px 0 var(--red-lo)}
 .brand b{color:var(--yellow);font-weight:400;-webkit-text-stroke:1px var(--red-lo)}
 .spacer{flex:1}
-.pill{font-size:.75rem;font-weight:800;background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.2);border-radius:999px;padding:5px 11px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pill{cursor:pointer;font-size:.75rem;font-weight:800;background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.2);border-radius:999px;padding:5px 11px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .icon-btn{width:40px;height:40px;border-radius:50%;border:2px solid rgba(255,255,255,.35);background:rgba(0,0,0,.15);color:#fff;cursor:pointer;display:grid;place-items:center;transition:transform .5s}
 .icon-btn:hover{transform:rotate(90deg);background:rgba(0,0,0,.25)}
 .icon-btn svg{width:20px;height:20px}
@@ -150,7 +150,10 @@ input::placeholder{color:var(--ink-3);font-weight:400}
 @keyframes corner{50%{opacity:.55}}
 .frame.busy::after{content:"";position:absolute;left:4px;right:4px;height:4px;border-radius:2px;background:linear-gradient(90deg,transparent,var(--yellow),#fff,var(--yellow),transparent);box-shadow:0 0 18px var(--yellow);animation:sweep 1.3s ease-in-out infinite}
 @keyframes sweep{0%{top:3%}50%{top:95%}100%{top:3%}}
-.torch{position:absolute;top:12px;right:12px;z-index:4;width:44px;height:44px;border-radius:50%;border:2px solid rgba(255,255,255,.4);background:rgba(6,10,30,.6);color:#fff;display:grid;place-items:center;cursor:pointer}
+.auto-chip{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:4;width:max-content;max-width:calc(100% - 28px);text-align:center;
+  background:rgba(6,10,30,.78);color:#fff;font-weight:800;font-size:.86rem;padding:8px 14px;border-radius:999px;border:1px solid rgba(255,203,5,.55);transition:background .25s,border-color .25s}
+.auto-chip.warn{background:rgba(120,50,0,.85);border-color:var(--yellow)}
+.torch{position:absolute;top:12px;right:12px;z-index:4;height:44px;padding:0 14px 0 12px;gap:6px;font:800 .8rem var(--body,inherit);border-radius:999px;border:2px solid rgba(255,255,255,.4);background:rgba(6,10,30,.6);color:#fff;display:flex;align-items:center;cursor:pointer}
 .torch svg{width:20px;height:20px}
 .torch.on{background:var(--yellow);color:#161d3f;border-color:var(--yellow);box-shadow:0 0 18px var(--yellow)}
 .vf-hint{position:relative;z-index:3;color:#d3daf5;text-align:center;padding:24px;max-width:26ch;font-size:.95rem}
@@ -252,6 +255,54 @@ dialog.sheet::backdrop{background:rgba(6,10,30,.62);backdrop-filter:blur(4px);-w
 .meta{color:var(--ink-2);font-size:.9rem;margin:6px 0 0}
 .badge{display:inline-block;font-size:.72rem;font-weight:800;letter-spacing:.05em;background:linear-gradient(180deg,#ffe066,var(--yellow));color:#161d3f;border-radius:999px;padding:4px 11px;white-space:nowrap;box-shadow:0 2px 0 var(--yellow-lo)}
 .price{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:20px 0 4px}
+.pf{display:block;text-align:center}
+.pf .v{margin:4px 0}
+.pf-sub{display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;min-height:30px}
+.pf-chart{margin:12px 0 6px}
+.pf-chart svg{display:block;width:100%;height:auto;overflow:visible}
+.pf-chart .lbl{font:700 13px var(--body);fill:#fff}
+.pf-chart .ax{font:600 11px var(--body);fill:var(--ink-3)}
+.pf-range{margin:6px auto 0;display:flex;width:max-content;max-width:100%}
+.pf-range button{padding:7px 12px;min-width:44px}
+.pf-bar{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin:0 0 14px}
+.pf-sort{display:flex;flex-direction:column;gap:4px;flex:1 1 130px}
+.pf-sort select{min-height:40px;padding:6px 12px;font-size:.9rem}
+.pf-bar .btn{min-height:40px;padding:8px 14px;font-size:.85rem}
+.clist{display:grid;gap:10px}
+.crow{display:grid;grid-template-columns:54px 1fr auto;gap:12px;align-items:center;padding:10px;border-radius:16px;background:var(--surface-solid);border:2px solid var(--line)}
+.crow img{width:54px;aspect-ratio:63/88;object-fit:contain;border-radius:6px;background:var(--surface-2)}
+.cr-p{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cr-p b{font:400 1.25rem var(--display);font-variant-numeric:tabular-nums}
+.cr-p .delta{animation:none;padding:2px 8px;font-size:.72rem}
+.cr-n{font-weight:800;font-size:.92rem;overflow-wrap:anywhere}
+.cr-s{font-size:.75rem;color:var(--ink-3);margin-top:2px}
+.crow .qty{flex-direction:column;margin:0}
+.info{display:grid;margin:0 0 16px;border-radius:16px;border:2px solid var(--line);background:var(--surface-solid);overflow:hidden}
+.info>div{display:flex;justify-content:space-between;gap:16px;padding:9px 14px;font-size:.88rem;border-top:1px solid var(--line)}
+.info>div:first-child{border-top:0}
+.info dt{color:var(--ink-3);font-weight:700}
+.info dd{margin:0;font-weight:800;text-align:right;overflow-wrap:anywhere}
+.coll-view{display:flex;width:100%;margin:0 0 16px}
+.coll-view button{flex:1}
+.dex-head{display:flex;justify-content:space-between;align-items:baseline;font-weight:700;font-size:1.05rem}
+.dex-head b{font:400 1.9rem var(--display)}
+.dex-pct{color:var(--accent);font-weight:800}
+.dex-bar{height:8px;border-radius:99px;background:var(--surface-2);border:1px solid var(--line);overflow:hidden;margin:8px 0 14px}
+.dex-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--fire),var(--yellow));border-radius:99px;transition:width .6s cubic-bezier(.2,1,.3,1)}
+.dex-f{margin:0 0 14px}
+.dex-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:10px}
+.dx{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px 10px;border-radius:16px;background:var(--surface-2);border:2px solid var(--line);text-align:center;min-width:0;content-visibility:auto;contain-intrinsic-size:110px 120px}
+.dx small{font-size:.66rem;font-weight:800;color:var(--ink-3);letter-spacing:.04em}
+.dx img{width:72px;height:72px;object-fit:contain;image-rendering:pixelated;filter:brightness(0) opacity(.55)}
+.dx span{font-size:.72rem;font-weight:800;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-3)}
+.dx.on{background:var(--surface-solid);border-color:color-mix(in srgb,var(--yellow) 70%,transparent)}
+.dx.on img{filter:none}
+.dx.on span{color:var(--ink)}
+.dx b{position:absolute;top:6px;right:6px;font-size:.62rem;background:var(--yellow);color:#161d3f;border-radius:99px;padding:1px 6px}
+.field.cond{margin-top:12px;max-width:260px}
+.seg{display:inline-flex;gap:4px;padding:4px;margin:12px 0 0;background:var(--surface-2);border:2px solid var(--line);border-radius:999px}
+.seg button{border:0;background:transparent;color:var(--ink-2);font:800 .85rem var(--body,inherit);padding:7px 18px;border-radius:999px;cursor:pointer;min-height:36px}
+.seg button[aria-pressed="true"]{background:linear-gradient(180deg,#ffe066,var(--yellow));color:#161d3f;box-shadow:0 2px 0 var(--yellow-lo)}
 .price .v{font:400 3.4rem/1 var(--display);letter-spacing:.01em;font-variant-numeric:tabular-nums;
   background:linear-gradient(180deg,var(--red-hi),var(--red) 60%,var(--red-lo));-webkit-background-clip:text;background-clip:text;color:transparent}
 .price .u{font:400 1.3rem var(--display);color:var(--ink-2)}
@@ -334,7 +385,8 @@ dialog a{color:var(--accent);font-weight:700}
             <div class="fx-msg" id="fxMsg"></div>
             <div class="fx-sub"><span id="fxSub">Läser av kortet</span><span class="fx-dots"></span></div>
           </div>
-          <button class="torch" id="torch" type="button" aria-label="Ficklampa" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></button>
+          <div class="auto-chip" id="autoChip" hidden>Håll kortet inom ramen</div>
+          <button class="torch" id="torch" type="button" aria-label="Ficklampa" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg><span>Blixt</span></button>
           <div class="vf-hint" id="vfHint">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><rect x="8" y="7" width="8" height="10" rx="1"/></svg>
             Starta kameran eller ladda upp ett foto av kortet.
@@ -388,19 +440,43 @@ dialog a{color:var(--accent);font-weight:700}
 
   <!-- SAMLING -->
   <section id="tab-coll" class="card" hidden>
-    <div class="tot">
-      <div><div class="eyebrow">Totalt värde</div><div class="v" id="collTotal">0 kr</div><div class="meta" id="collCount"></div></div>
-      <button class="btn quiet" id="exportCsv">Exportera CSV</button>
+    <div class="seg coll-view" id="collView" role="group" aria-label="Visa"><button type="button" data-v="cards" aria-pressed="true">Kort</button><button type="button" data-v="dex" aria-pressed="false">Pokédex</button></div>
+    <div id="collCards">
+    <div class="tot pf">
+      <div class="eyebrow">Totalt värde</div>
+      <div class="v" id="collTotal">0 kr</div>
+      <div class="pf-sub"><span class="delta" id="pfDelta" hidden></span><span class="meta" id="collCount"></span></div>
+      <div class="pf-chart" id="pfChart" hidden></div>
+      <div class="seg pf-range" id="pfRange" role="group" aria-label="Period" hidden><button type="button" data-r="7D">7D</button><button type="button" data-r="1M">1M</button><button type="button" data-r="3M">3M</button><button type="button" data-r="6M">6M</button><button type="button" data-r="MAX">MAX</button></div>
+    </div>
+    <div class="pf-bar" id="pfBar">
+      <label class="pf-sort"><span class="eyebrow">Sortera</span><select id="collSort"><option value="recent">Senast tillagd</option><option value="name">Namn</option><option value="value">Högst värde</option></select></label>
+      <div class="seg" id="collLayout" role="group" aria-label="Visning"><button type="button" data-l="list">Lista</button><button type="button" data-l="grid">Rutnät</button></div>
+      <button class="btn quiet" id="exportCsv">CSV</button>
     </div>
     <div class="grid" id="collGrid"></div>
     <div class="empty" id="collEmpty">Samlingen är tom. Slå upp ett kort och välj “Lägg i samling”.</div>
+    </div>
+    <div id="dexView" hidden>
+      <div class="dex-head"><span><b id="dexCount">0</b> / <span id="dexTotal">1025</span> fångade</span><span class="dex-pct" id="dexPct">0 %</span></div>
+      <div class="dex-bar"><i id="dexFill"></i></div>
+      <div class="seg dex-f" id="dexF" role="group" aria-label="Filter"><button type="button" data-f="all" aria-pressed="true">Alla</button><button type="button" data-f="got" aria-pressed="false">Fångade</button><button type="button" data-f="miss" aria-pressed="false">Saknas</button></div>
+      <div class="dex-grid" id="dexGrid"></div>
+      <p class="status" id="dexStatus"></p>
+    </div>
   </section>
 </main>
-<p class="foot">Kortdata och priser från TCGdex. Priser är Cardmarket (EUR) omräknade till SEK och gäller ungefär Near Mint. Se dem som en riktpunkt.</p>
+<p class="foot">Kortdata och priser från TCGdex. Priser är Cardmarket (EUR) omräknade till SEK och gäller ungefär Near Mint. Andra skick är uppskattade avdrag. Se dem som en riktpunkt.</p>
 
 <dialog id="settings">
   <h2>Inställningar</h2>
   <p>Priserna hämtas gratis från TCGdex. Ingen nyckel behövs.</p>
+  <label class="field"><span>Pris för utgåva</span>
+    <select id="varSel"><option value="auto">Automatisk</option><option value="normal">Alltid vanlig</option><option value="holo">Holo när det finns</option></select></label>
+  <label class="field"><span>Valuta</span>
+    <select id="curSel"></select></label>
+  <label class="field"><span>Standardskick</span>
+    <select id="condDef"></select></label>
   <label class="field"><span>Språk för kortnamn</span>
     <select id="langSel"><option value="en">English</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="es">Español</option><option value="it">Italiano</option><option value="pt">Português</option></select></label>
   <div class="dlg-actions">
@@ -422,26 +498,44 @@ const store = {
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const nf0 = new Intl.NumberFormat('sv-SE', { maximumFractionDigits: 0 });
 const nf2 = new Intl.NumberFormat('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const kr = n => n == null ? '–' : nf0.format(Math.round(n)) + ' kr';
-const kr2 = n => n == null ? '–' : nf2.format(n) + ' kr';
+/* Alla priser räknas internt i kronor och visas i vald valuta */
+const CURS = { SEK: ['Svenska kronor', 'kr', 1], EUR: ['Euro', '€', 11], USD: ['US-dollar', '$', 9.6], GBP: ['Brittiska pund', '£', 12.8], NOK: ['Norska kronor', 'NOK', .95], DKK: ['Danska kronor', 'DKK', 1.47],
+  CHF: ['Schweizerfranc', 'CHF', 11.7], JPY: ['Japanska yen', '¥', .065], CAD: ['Kanadensiska dollar', 'C$', 7], AUD: ['Australiska dollar', 'A$', 6.3], PLN: ['Polska złoty', 'zł', 2.6] };
+let CUR = store.get('cur', 'SEK'); if (!CURS[CUR]) CUR = 'SEK';
+const perCur = () => (window.FX_PER && FX_PER[CUR]) || CURS[CUR][2];   // kronor per 1 enhet av vald valuta
+const conv = n => n / perCur();
+const sym = () => CURS[CUR][1];
+const fmtCur = (n, dec) => { const v = conv(n); return (dec || (v < 10 && CUR !== 'JPY') ? nf2 : nf0).format(dec || (v < 10 && CUR !== 'JPY') ? v : Math.round(v)) + ' ' + sym(); };
+const kr = n => n == null ? '–' : fmtCur(n, false);
+const kr2 = n => n == null ? '–' : fmtCur(n, true);
 const PAGE = 24;
 
 /* ---------- Växelkurs ---------- */
 let FX = { EUR: 11.0, USD: 9.6, live: false };
 async function loadFx(){
   const c = store.get('fx', null);
-  if (c && Date.now() - c.t < 12*3600*1000){ FX = c.fx; return showRate(); }
+  if (c && c.fx && c.fx.per && Date.now() - c.t < 12*3600*1000){ FX = c.fx; window.FX_PER = FX.per; return showRate(); }
   try {
-    const j = await (await fetch('https://api.frankfurter.app/latest?from=EUR&to=SEK,USD')).json();
-    FX = { EUR: j.rates.SEK, USD: j.rates.SEK / j.rates.USD, live: true };
+    const codes = Object.keys(CURS).filter(k => k !== 'EUR' && k !== 'SEK');
+    const j = await (await fetch('https://api.frankfurter.app/latest?from=EUR&to=SEK,' + codes.join(','))).json();
+    const per = { SEK: 1, EUR: j.rates.SEK }; codes.forEach(k => { if (j.rates[k]) per[k] = j.rates.SEK / j.rates[k]; });
+    FX = { EUR: j.rates.SEK, USD: per.USD, per, live: true }; window.FX_PER = per;
     store.set('fx', { t: Date.now(), fx: FX });
   } catch {}
   showRate();
 }
-function showRate(){ $('#rate').textContent = `1 € = ${nf2.format(FX.EUR)} kr${FX.live ? '' : ' (ca)'}`; }
+function showRate(){
+  const eur = FX.EUR / perCur();
+  $('#rate').textContent = CUR === 'EUR' ? `1 $ = ${nf2.format(FX.USD / perCur())} €${FX.live ? '' : ' (ca)'}` : `1 € = ${nf2.format(eur)} ${sym()}${FX.live ? '' : ' (ca)'}`;
+}
 
 /* ---------- TCGdex API (gratis, ingen nyckel) ---------- */
 let LANG = store.get('lang', 'en');
+/* Skick: Cardmarkets pris gäller ungefär Near Mint, övriga skick är uppskattade avdrag */
+const CONDS = [['MT', 'Mint', 1.1], ['NM', 'Near Mint', 1], ['EX', 'Excellent', .85], ['GD', 'Good', .7], ['LP', 'Light Played', .55], ['PL', 'Played', .4], ['PO', 'Poor', .25]];
+const condF = k => (CONDS.find(x => x[0] === k) || CONDS[1])[2];
+let COND = store.get('cond', 'NM');
+let VAR = store.get('variant', 'auto'); // standardutgåva för pris: auto | normal | holo
 async function api(path, tries = 2){
   for (let i = 0; i < tries; i++){
     const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 20000);
@@ -462,7 +556,7 @@ const brief = b => ({ id: b.id, name: b.name, number: b.localId, img: b.image ? 
 function norm(d){
   return { id: d.id, name: d.name, number: d.localId, rarity: d.rarity, artist: d.illustrator, setName: d.set?.name,
     total: d.set?.cardCount?.official, img: d.image ? d.image + '/low.webp' : '', imgL: d.image ? d.image + '/high.webp' : '',
-    variants: d.variants || {}, cm: d.pricing?.cardmarket || null, tp: d.pricing?.tcgplayer || null, detailed: true };
+    dex: d.dexId || [], category: d.category, hp: d.hp, types: d.types || [], stage: d.stage, variants: d.variants || {}, cm: d.pricing?.cardmarket || null, tp: d.pricing?.tcgplayer || null, detailed: true };
 }
 async function findBrief({ name, number, setId }){
   let l;
@@ -486,23 +580,28 @@ async function pool(items, n, fn){
 
 /* ---------- Pris ---------- */
 function prices(c){
-  const o = { main: null, src: '', metrics: [], series: [], updated: '' };
+  const o = { cond: 'NM', main: null, src: '', metrics: [], series: [], updated: '', holo: false, hasHolo: false };
   if (!c.detailed) return o;
   const cm = c.cm, tp = c.tp;
-  const sfx = c.variants.holo && !c.variants.normal ? '-holo' : '';
+  const cond = c.cond || COND, f = condF(cond);
+  o.cond = cond;
+  const pick = c.pick || VAR, hasHolo = !!(cm && (cm['trend-holo'] || cm['avg-holo'] || cm['low-holo']));
+  let sfx = c.variants.holo && !c.variants.normal ? '-holo' : '';
+  if (pick === 'holo' && hasHolo) sfx = '-holo'; else if (pick === 'normal') sfx = '';
+  o.holo = sfx === '-holo'; o.hasHolo = hasHolo;
   if (cm && (cm.trend || cm.avg || cm.low || cm['trend-holo'])){
-    const g = k => { const v = cm[k + sfx]; return v ? v * FX.EUR : null; };
+    const g = k => { const v = cm[k + sfx]; return v ? v * FX.EUR * f : null; };
     o.src = 'Cardmarket'; o.updated = (cm.updated || '').slice(0, 10);
     o.main = g('trend') ?? g('avg') ?? g('low');
     o.metrics = [['Trendpris', g('trend')], ['Lägsta', g('low')], ['Snitt 1 dag', g('avg1')], ['Snitt 7 dagar', g('avg7')], ['Snitt 30 dagar', g('avg30')]];
-    if (!sfx && cm['trend-holo']) o.metrics.push(['Holo, trend', cm['trend-holo'] * FX.EUR]);
+    if (!sfx && cm['trend-holo']) o.metrics.push(['Holo, trend', cm['trend-holo'] * FX.EUR * f]);
     o.series = [[30, '30 d', g('avg30')], [7, '7 d', g('avg7')], [0, 'Nu', g('trend') ?? g('avg1')]].filter(x => x[2] != null);
   } else if (tp){
     const list = Object.entries(tp).filter(([,v]) => v && typeof v === 'object' && v.marketPrice);
     if (list.length){
       o.src = 'TCGplayer (USD)'; o.updated = (tp.updated || '').slice(0, 10);
-      o.main = list[0][1].marketPrice * FX.USD;
-      o.metrics = list.map(([k,v]) => [k, v.marketPrice * FX.USD]);
+      o.main = list[0][1].marketPrice * FX.USD * f;
+      o.metrics = list.map(([k,v]) => [k, v.marketPrice * FX.USD * f]);
     }
   }
   return o;
@@ -517,7 +616,7 @@ function showTab(t){
   ['scan','search','coll'].forEach(x => $('#tab-'+x).hidden = x !== t);
   const browse = t !== 'coll';
   $('#results').hidden = !browse || !list.length;
-  if (t === 'coll') renderColl();
+  if (t === 'coll'){ renderColl(); refreshColl(); if (!$('#dexView').hidden) renderDex(); }
 }
 
 /* ---------- Sökresultat ---------- */
@@ -553,9 +652,10 @@ function tier(c){ const v = prices(c).main; return v == null ? '' : v >= 1000 ? 
 function updateTile(c){ const b = tileEls[c.id]; if (!b) return; b.className = 'tile ' + tier(c); b.innerHTML = tileInner(c); }
 function tierLabel(c){ const t = tier(c); return t === 't-epic' ? '<span class="tier">Legendarisk</span>' : t === 't-rare' ? '<span class="tier">Värdefull</span>' : ''; }
 function countUp(el, to){
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches){ el.textContent = nf0.format(Math.round(to)); return; }
+  const f = v => (to < 10 && CUR !== 'JPY' ? nf2.format(v) : nf0.format(Math.round(v)));
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches){ el.textContent = f(to); return; }
   const t0 = performance.now(), dur = 800;
-  const step = t => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3); el.textContent = nf0.format(Math.round(to * e)); if (k < 1) requestAnimationFrame(step); };
+  const step = t => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3); el.textContent = f(to * e); if (k < 1) requestAnimationFrame(step); };
   requestAnimationFrame(step);
 }
 function tilt(h){
@@ -607,7 +707,30 @@ async function runSearch(q){
 $('#more').addEventListener('click', () => loadBatch(gen, null));
 $('#sort').addEventListener('change', () => list.length && renderGrid());
 
+let curDetail = null;
+/* ---------- Kortinformation ---------- */
+const VARNAMES = { normal: 'Vanlig', reverse: 'Reverse holo', holo: 'Holo', firstEdition: '1st Edition', wPromo: 'Promo' };
+const setInfo = new Map();
+function infoTable(c){
+  const rows = [['Nummer', c.number + (c.total ? ' / ' + c.total : '')], ['Namn', c.name], ['Raritet', c.rarity], ['Set', c.setName], ['Serie', '', 'infoSerie'], ['Utgivning', '', 'infoDate'],
+    ['Illustratör', c.artist], ['Kategori', [c.category, c.stage].filter(Boolean).join(' · ')], ['HP', c.hp], ['Typ', (c.types || []).join(', ')],
+    ['Utgåvor', Object.entries(c.variants || {}).filter(([, v]) => v === true).map(([k]) => VARNAMES[k] || k).join(', ')]];
+  return `<dl class="info">${rows.map(([k, v, id]) => (v || id) ? `<div${id ? ` id="${id}Row" hidden` : ''}><dt>${esc(k)}</dt><dd${id ? ` id="${id}"` : ''}>${esc(v)}</dd></div>` : '').join('')}</dl>`;
+}
+/* Serie och utgivningsdatum finns bara på setet: hämtas en gång per set */
+async function fillSetInfo(c){
+  const sid = String(c.id).slice(0, String(c.id).lastIndexOf('-'));
+  try {
+    if (!setInfo.has(sid)) setInfo.set(sid, api('/sets/' + encodeURIComponent(sid)).catch(() => null));
+    const st = await setInfo.get(sid); if (!st) return;
+    const put = (id, v) => { const el = document.getElementById(id); if (el && v){ el.textContent = v; document.getElementById(id + 'Row').hidden = false; } };
+    put('infoSerie', st.serie?.name);
+    put('infoDate', st.releaseDate ? new Date(st.releaseDate).toLocaleDateString('sv-SE', { year: 'numeric', month: 'long', day: 'numeric' }) : '');
+  } catch {}
+}
+
 async function showDetail(c){
+  curDetail = c;
   await hydrate(c);
   const p = prices(c), d = $('#detail'), s = p.series;
   const link = `https://www.cardmarket.com/en/Pokemon/Products/Search?searchString=${encodeURIComponent(c.name + ' ' + c.number)}`;
@@ -622,19 +745,25 @@ async function showDetail(c){
       <div class="d-head"><div><h2>${esc(c.name)}</h2>
         <p class="meta">${esc(c.setName)} · ${esc(c.number)}${c.total ? '/' + esc(c.total) : ''}${c.artist ? ' · ' + esc(c.artist) : ''}</p></div>
         ${c.rarity ? `<span class="badge">${esc(c.rarity)}</span>` : ''}</div>
-      <div class="price"><span class="v">${p.main == null ? 'Pris saknas' : nf0.format(Math.round(p.main))}</span>${p.main == null ? '' : '<span class="u">kr</span>'}${delta}</div>
-      <p class="src">${p.src ? 'Källa: ' + esc(p.src) + (p.updated ? ' · uppdaterad ' + esc(p.updated) : '') : 'Ingen prisdata finns för det här kortet.'}</p>
+      <div class="price"><span class="v">${p.main == null ? 'Pris saknas' : (conv(p.main) < 10 && CUR !== 'JPY' ? nf2 : nf0).format(conv(p.main) < 10 && CUR !== 'JPY' ? conv(p.main) : Math.round(conv(p.main)))}</span>${p.main == null ? '' : '<span class="u">' + esc(sym()) + '</span>'}${delta}</div>
+      <p class="src">${p.src ? 'Källa: ' + esc(p.src) + (p.updated ? ' · uppdaterad ' + esc(p.updated) : '') + (p.cond !== 'NM' ? ' · skick ' + esc(p.cond) + ' är en uppskattning' : '') : 'Ingen prisdata finns för det här kortet.'}</p>
+      ${p.hasHolo ? `<div class="seg" role="group" aria-label="Utgåva"><button type="button" data-v="normal" aria-pressed="${!p.holo}">Vanlig</button><button type="button" data-v="holo" aria-pressed="${p.holo}">Holo</button></div>` : ''}
+      <label class="field cond"><span>Skick</span><select id="condSel">${CONDS.map(([k, n]) => `<option value="${k}"${k === p.cond ? ' selected' : ''}>${k} · ${n}</option>`).join('')}</select></label>
       ${s.length >= 2 ? '<div class="chart" id="chart"></div>' : ''}
       ${p.metrics.length ? `<div class="metrics">${p.metrics.map(([k,v]) => `<div class="metric"><div class="k">${esc(k)}</div><div class="val">${kr2(v)}</div></div>`).join('')}</div>` : ''}
+      ${infoTable(c)}
       <div class="row">
         <button class="btn yellow" id="addColl">Lägg i samling</button>
         <a class="btn quiet" href="${esc(link)}" target="_blank" rel="noopener">Sök på Cardmarket</a>
       </div>
     </div></div>`;
   openSheet();
+  fillSetInfo(c);
   tilt($('#holo'));
-  if (p.main != null) countUp(d.querySelector('.price .v'), p.main);
+  if (p.main != null) countUp(d.querySelector('.price .v'), conv(p.main));
   if (s.length >= 2) drawChart($('#chart'), s);
+  d.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => { c.pick = b.dataset.v; showDetail(c); if (list.length) renderGrid(); }));
+  $('#condSel').addEventListener('change', e => { c.cond = e.target.value; showDetail(c); if (list.length) renderGrid(); });
   $('#addColl').addEventListener('click', e => { addToColl(c); burst(e.target); e.target.textContent = 'Tillagd i samlingen'; e.target.disabled = true; });
 }
 
@@ -724,7 +853,7 @@ function drawChart(host, s){
   const area = line + ` L${pts[pts.length-1][0].toFixed(1)} ${T+ih} L${pts[0][0].toFixed(1)} ${T+ih} Z`;
   host.innerHTML = `<h3>Prisutveckling, 30 dagar</h3>
     <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Prisutveckling: ${s.map(x => x[1] + ' ' + kr(x[2])).join(', ')}">
-      ${ticks.map(v => `<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)" stroke-width="1"/><text x="${L-8}" y="${Y(v)+4}" text-anchor="end">${nf0.format(Math.round(v))}</text>`).join('')}
+      ${ticks.map(v => `<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)" stroke-width="1"/><text x="${L-8}" y="${Y(v)+4}" text-anchor="end">${nf0.format(Math.round(conv(v)))}</text>`).join('')}
       <path d="${area}" fill="var(--accent)" fill-opacity=".10"/>
       <path class="line" d="${line}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
       ${s.map((x,i) => `<text x="${pts[i][0]}" y="${H-8}" text-anchor="${i === 0 ? 'start' : i === s.length-1 ? 'end' : 'middle'}">${x[1]}</text>`).join('')}
@@ -749,33 +878,117 @@ function drawChart(host, s){
 
 /* ---------- Samling ---------- */
 function addToColl(c){
-  const coll = store.get('coll', {}), p = prices(c), e = coll[c.id] || { qty: 0 };
-  coll[c.id] = { id: c.id, qty: e.qty + 1, name: c.name, set: c.setName, number: c.number, total: c.total, img: c.img, sek: p.main };
-  store.set('coll', coll);
+  const coll = store.get('coll', {}), p = prices(c), key = c.id + (p.holo ? '#holo' : '') + (p.cond !== 'NM' ? '#' + p.cond : ''), e = coll[key] || { qty: 0 };
+  const at = k => p.series.find(x => x[0] === k)?.[2] ?? null;
+  coll[key] = { id: c.id, dex: c.dex || [], key, holo: p.holo, cond: p.cond, qty: e.qty + 1, name: c.name, set: c.setName, number: c.number, total: c.total, img: c.img,
+    sek: p.main, avg7: at(7), avg30: at(30), t: Date.now(), added: e.added || new Date().toISOString(), rarity: c.rarity };
+  store.set('coll', coll); histAdd(collTotals(Object.values(coll)).now);
+}
+
+/* ---------- Portfölj: värde, förändring och diagram ---------- */
+const RANGES = { '7D': 7, '1M': 30, '3M': 90, '6M': 180, 'MAX': 99999 };
+let pfRange = store.get('pfRange', '1M'), collSort = store.get('collSort', 'recent'), collLayout = store.get('collLayout', 'list');
+const DAY = 864e5;
+function histAdd(total){
+  const h = store.get('hist', []), d = new Date().toISOString().slice(0, 10);
+  if (h.length && h[h.length - 1][0] === d) h[h.length - 1][1] = total; else h.push([d, total]);
+  store.set('hist', h.slice(-730));
+}
+function collTotals(items){
+  let now = 0, a7 = 0, a30 = 0, k7 = 0, k30 = 0;
+  for (const x of items){ const q = x.qty || 1, v = (x.sek || 0) * q; now += v; a7 += (x.avg7 ?? x.sek ?? 0) * q; a30 += (x.avg30 ?? x.sek ?? 0) * q; if (x.avg7 != null) k7++; if (x.avg30 != null) k30++; }
+  return { now, a7, a30, k7, k30 };
+}
+function pfPoints(T){
+  const t = Date.now(), pts = store.get('hist', []).map(([d, v]) => ({ t: new Date(d).getTime(), v }));
+  const near = tt => pts.some(p => Math.abs(p.t - tt) < 3 * DAY);
+  if (T.k30 && !near(t - 30 * DAY)) pts.push({ t: t - 30 * DAY, v: T.a30 });
+  if (T.k7 && !near(t - 7 * DAY)) pts.push({ t: t - 7 * DAY, v: T.a7 });
+  const cut = t - RANGES[pfRange] * DAY, out = pts.filter(p => p.t >= cut && p.t < t - .5 * DAY).sort((a, b) => a.t - b.t);
+  out.push({ t, v: T.now }); return out;
+}
+function drawPortfolio(el, pts, up){
+  const W = 360, H = 130, L = 6, R = 6, Tp = 26, Bt = 18, col = up ? 'var(--good)' : 'var(--bad)';
+  const t0 = pts[0].t, t1 = pts[pts.length - 1].t || t0 + 1, lo = Math.min(...pts.map(p => p.v)), hi = Math.max(...pts.map(p => p.v)), span = (hi - lo) || Math.max(1, hi * .1);
+  const X = t => L + (t - t0) / ((t1 - t0) || 1) * (W - L - R), Y = v => Tp + (1 - (v - lo + span * .1) / (span * 1.2)) * (H - Tp - Bt);
+  const P = pts.map(p => [X(p.t), Y(p.v)]);
+  let d = 'M' + P[0][0] + ' ' + P[0][1];
+  for (let i = 1; i < P.length; i++){ const [x0, y0] = P[i-1], [x1, y1] = P[i], mx = (x0 + x1) / 2; d += ` C${mx} ${y0} ${mx} ${y1} ${x1} ${y1}`; }
+  const last = P[P.length - 1], txt = kr(pts[pts.length - 1].v), tw = txt.length * 8 + 18, bx = Math.min(W - tw / 2, Math.max(tw / 2, last[0]));
+  const fmt = t => new Date(t).toLocaleDateString('sv-SE', { day: 'numeric', month: 'short' });
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Samlingens värde över tid"><defs><linearGradient id="pfg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".35"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
+    <path d="${d} L${last[0]} ${H - Bt} L${P[0][0]} ${H - Bt} Z" fill="url(#pfg)"/>
+    <path class="line" d="${d}" fill="none" stroke="${col}" stroke-width="3" stroke-linecap="round" pathLength="1000"/>
+    <circle cx="${last[0]}" cy="${last[1]}" r="5" fill="${col}" stroke="var(--surface-solid)" stroke-width="2"/>
+    <rect x="${bx - tw / 2}" y="2" width="${tw}" height="22" rx="11" fill="${col}"/><text class="lbl" x="${bx}" y="17" text-anchor="middle">${esc(txt)}</text>
+    <text class="ax" x="${L}" y="${H - 3}">${fmt(t0)}</text><text class="ax" x="${W - R}" y="${H - 3}" text-anchor="end">${fmt(t1)}</text></svg>`;
+}
+/* Uppdatera priserna i samlingen (högst en gång var 12:e timme per kort) och spara dagens värde */
+let collFresh = false;
+async function refreshColl(){
+  if (collFresh) return; collFresh = true;
+  const coll = store.get('coll', {}), now = Date.now(), todo = Object.values(coll).filter(x => !x.t || now - x.t > 12 * 3600e3);
+  if (!todo.length){ histAdd(collTotals(Object.values(coll)).now); return; }
+  await pool(todo, 3, async x => {
+    try {
+      const c = norm(await api('/cards/' + encodeURIComponent(x.id))); c.pick = x.holo ? 'holo' : 'auto'; c.cond = x.cond || 'NM';
+      const p = prices(c), at = k => p.series.find(s => s[0] === k)?.[2] ?? null;
+      if (p.main != null){ x.sek = p.main; x.avg7 = at(7); x.avg30 = at(30); x.t = now; if (c.dex?.length) x.dex = c.dex; x.rarity = c.rarity; }
+    } catch {}
+  });
+  store.set('coll', coll); histAdd(collTotals(Object.values(coll)).now); renderColl();
 }
 function renderColl(){
   const items = Object.values(store.get('coll', {}));
-  const n = items.reduce((s,x) => s + x.qty, 0);
+  const n = items.reduce((s,x) => s + x.qty, 0), T = collTotals(items);
   $('#collEmpty').hidden = items.length > 0;
-  $('#collTotal').textContent = kr(items.reduce((s,x) => s + (x.sek||0) * x.qty, 0));
+  $('#collTotal').textContent = kr(T.now);
   $('#collCount').textContent = items.length ? `${n} kort · ${items.length} unika` : '';
+  $('#pfBar').hidden = !items.length;
   $('#exportCsv').hidden = !items.length;
-  const g = $('#collGrid'); g.innerHTML = '';
-  items.forEach(x => {
-    const d = document.createElement('div');
-    d.className = 'tile'; d.style.cursor = 'default';
-    d.innerHTML = `<img src="${esc(x.img)}" alt="${esc(x.name)}"><span class="n">${esc(x.name)}</span>
-      <span class="s">${esc(x.set)} · ${esc(x.number)}${x.total ? '/' + esc(x.total) : ''}</span><span class="p">${kr((x.sek||0) * x.qty)}</span>
-      <div class="qty"><button aria-label="Minska antal">−</button><b>${x.qty}</b><button aria-label="Öka antal">+</button></div>`;
+  // förändring och diagram
+  const pts = items.length ? pfPoints(T) : [], dl = $('#pfDelta'), ch = $('#pfChart'), rg = $('#pfRange');
+  const first = pts[0], show = pts.length >= 2 && first.v > 0;
+  dl.hidden = !show; ch.hidden = !show; rg.hidden = !items.length;
+  rg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.r === pfRange));
+  if (show){
+    const diff = T.now - first.v, pct = diff / first.v * 100, up = diff >= 0;
+    dl.className = 'delta ' + (up ? 'up' : 'down');
+    dl.innerHTML = `<svg viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">${up ? '<path d="M6 1l5 9H1z"/>' : '<path d="M6 11L1 2h10z"/>'}</svg>${up ? '+' : '−'}${kr(Math.abs(diff))} (${up ? '+' : '−'}${nf2.format(Math.abs(pct))} %) · ${{ '7D': '7 dagar', '1M': '30 dagar', '3M': '3 månader', '6M': '6 månader', 'MAX': 'sedan start' }[pfRange]}`;
+    drawPortfolio(ch, pts, up);
+  }
+  // lista
+  const sorted = items.slice().sort((a, b) => collSort === 'name' ? a.name.localeCompare(b.name, 'sv') : collSort === 'value' ? (b.sek || 0) * b.qty - (a.sek || 0) * a.qty : String(b.added || '').localeCompare(String(a.added || '')));
+  document.querySelectorAll('#collLayout button').forEach(b => b.setAttribute('aria-pressed', b.dataset.l === collLayout));
+  $('#collSort').value = collSort;
+  const g = $('#collGrid'); g.innerHTML = ''; g.className = collLayout === 'list' ? 'clist' : 'grid';
+  sorted.forEach(x => {
+    const d = document.createElement('div'), tags = (x.holo ? ' ✦ Holo' : '') + (x.cond && x.cond !== 'NM' ? ' · ' + x.cond : '');
+    const ch30 = x.avg30 ? (x.sek / x.avg30 - 1) * 100 : null, badge = ch30 != null && Math.abs(ch30) >= .5 ? `<span class="delta ${ch30 >= 0 ? 'up' : 'down'}">${ch30 >= 0 ? '▲' : '▼'} ${nf0.format(Math.abs(Math.round(ch30)))} %</span>` : '';
+    const added = x.added ? new Date(x.added).toLocaleDateString('sv-SE') : '';
+    const qty = `<div class="qty"><button aria-label="Minska antal">−</button><b>${x.qty}</b><button aria-label="Öka antal">+</button></div>`;
+    if (collLayout === 'list'){
+      d.className = 'crow';
+      d.innerHTML = `<img src="${esc(x.img)}" alt="${esc(x.name)}"><div><div class="cr-p"><b>${kr((x.sek||0) * x.qty)}</b>${badge}</div>
+        <div class="cr-n">${esc(x.name)}${esc(tags)} · #${esc(x.number)}${x.total ? '/' + esc(x.total) : ''}</div>
+        <div class="cr-s">${esc(x.set || '')}${added ? ' · ' + esc(added) : ''}${x.rarity ? ' · ' + esc(x.rarity) : ''}</div></div>${qty}`;
+    } else {
+      d.className = 'tile'; d.style.cursor = 'default';
+      d.innerHTML = `<img src="${esc(x.img)}" alt="${esc(x.name)}"><span class="n">${esc(x.name)}${esc(tags)}</span>
+        <span class="s">${esc(x.set)} · ${esc(x.number)}${x.total ? '/' + esc(x.total) : ''}</span><span class="p">${kr((x.sek||0) * x.qty)}</span>${badge}${qty}`;
+    }
     const [m, pl] = d.querySelectorAll('button');
-    const upd = q => { const c = store.get('coll', {}); if (q <= 0) delete c[x.id]; else c[x.id].qty = q; store.set('coll', c); renderColl(); };
+    const upd = q => { const c = store.get('coll', {}); const k = x.key || x.id; if (q <= 0) delete c[k]; else c[k].qty = q; store.set('coll', c); histAdd(collTotals(Object.values(c)).now); renderColl(); };
     m.addEventListener('click', () => upd(x.qty - 1)); pl.addEventListener('click', () => upd(x.qty + 1));
     g.appendChild(d);
   });
 }
+document.querySelectorAll('#pfRange button').forEach(b => b.addEventListener('click', () => { pfRange = b.dataset.r; store.set('pfRange', pfRange); renderColl(); }));
+document.querySelectorAll('#collLayout button').forEach(b => b.addEventListener('click', () => { collLayout = b.dataset.l; store.set('collLayout', collLayout); renderColl(); }));
+$('#collSort').addEventListener('change', e => { collSort = e.target.value; store.set('collSort', collSort); renderColl(); });
 $('#exportCsv').addEventListener('click', () => {
-  const rows = [['Namn','Set','Nummer','Antal','Värde per kort (SEK)']];
-  Object.values(store.get('coll', {})).forEach(x => rows.push([x.name, x.set, x.number + (x.total ? '/' + x.total : ''), x.qty, Math.round(x.sek || 0)]));
+  const rows = [['Namn','Set','Nummer','Antal','Värde per kort (' + CUR + ')']];
+  Object.values(store.get('coll', {})).forEach(x => rows.push([x.name + (x.holo ? ' (Holo)' : '') + (x.cond && x.cond !== 'NM' ? ' (' + x.cond + ')' : ''), x.set, x.number + (x.total ? '/' + x.total : ''), x.qty, Math.round(conv(x.sek || 0) * 100) / 100]));
   const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(';')).join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = 'pokescan-samling.csv'; a.click();
@@ -935,9 +1148,11 @@ async function showCandidates(ranked, total){
 
 /* ---------- Kamera ---------- */
 let lastCanvas = null;
-let stream = null, track = null, torchOn = false;
+let stream = null, track = null, torchOn = false, torchOK = true;
+let autoOn = false, autoBusy = false, autoTimer = null, lastKey = '', fails = 0;
 const video = $('#video'), shot = $('#shot'), frame = $('#frame');
 function stopCamera(){
+  autoOn = false; clearTimeout(autoTimer); $('#autoChip').hidden = true;
   stream?.getTracks().forEach(t => t.stop()); stream = null; track = null;
   $('#torch').hidden = true; $('#snap').disabled = true;
   $('#startCam').textContent = 'Kamera';
@@ -951,19 +1166,21 @@ $('#startCam').addEventListener('click', async () => {
     track = stream.getVideoTracks()[0];
     try { await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch {}
     const caps = track.getCapabilities ? track.getCapabilities() : {};
-    $('#torch').hidden = !caps.torch;
+    $('#torch').hidden = false; torchOK = !!caps.torch;
     video.srcObject = stream; await video.play();
     video.hidden = false; shot.hidden = true; shot.classList.remove('fit'); $('#reScan').hidden = true; frame.hidden = false; $('#vfHint').hidden = true; $('#snap').disabled = false;
     $('#startCam').textContent = 'Stäng';
     loadIndex(); loadArt();
     st.textContent = '';
+    startAuto();
   } catch {
     st.textContent = 'Kameran startade inte. Tillåt kameraåtkomst, eller ladda upp ett foto från galleriet.'; st.classList.add('err');
   }
 });
 $('#torch').addEventListener('click', async () => {
+  if (!torchOK){ const st = $('#scanStatus'); st.className = 'status err'; st.textContent = 'Blixten stöds inte av kameran i den här telefonen.'; return; }
   torchOn = !torchOn;
-  try { await track.applyConstraints({ advanced: [{ torch: torchOn }] }); $('#torch').classList.toggle('on', torchOn); } catch { torchOn = false; }
+  try { await track.applyConstraints({ advanced: [{ torch: torchOn }] }); $('#torch').classList.toggle('on', torchOn); } catch { torchOn = false; const st = $('#scanStatus'); st.className = 'status err'; st.textContent = 'Blixten stöds inte av kameran i den här telefonen.'; }
 });
 function grabFrame(){
   const vw = video.videoWidth, vh = video.videoHeight;
@@ -976,7 +1193,76 @@ function grabFrame(){
   c.getContext('2d').drawImage(video, ox + (visW - cw) / 2, oy + (visH - ch) / 2, cw, ch, 0, 0, c.width, c.height);
   return c;
 }
+/* ---------- Automatisk avläsning med vägledning ---------- */
+function chip(t, warn){ const c = $('#autoChip'); c.hidden = false; c.textContent = t; c.classList.toggle('warn', !!warn); }
+/* Medelljus (0–255) i en liten version av bilden */
+function brightness(c){
+  const t = document.createElement('canvas'); t.width = 32; t.height = Math.max(1, Math.round(c.height * 32 / c.width));
+  const g = t.getContext('2d', { willReadFrequently: true }); g.drawImage(c, 0, 0, t.width, t.height);
+  const p = g.getImageData(0, 0, t.width, t.height).data; let s = 0;
+  for (let i = 0; i < p.length; i += 4) s += p[i] * .299 + p[i+1] * .587 + p[i+2] * .114;
+  return s / (p.length / 4);
+}
+/* Hur stor del av kameravyn täcks av kortet? Kantanalys av hela bilden, bara som grov vägledning. */
+function cardExtent(){
+  const vw = video.videoWidth, vh = video.videoHeight; if (!vw) return null;
+  const w = 160, h = Math.round(vh * w / vw), t = document.createElement('canvas'); t.width = w; t.height = h;
+  const g = t.getContext('2d', { willReadFrequently: true }); g.drawImage(video, 0, 0, w, h);
+  const p = g.getImageData(0, 0, w, h).data, gr = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) gr[i] = p[i*4] * .299 + p[i*4+1] * .587 + p[i*4+2] * .114;
+  const B = 8, bw = Math.floor(w / B), bh = Math.floor(h / B), d = new Float32Array(bw * bh); let mean = 0;
+  for (let by = 0; by < bh; by++) for (let bx = 0; bx < bw; bx++){ let e = 0;
+    for (let y = 1; y < B - 1; y++) for (let x = 1; x < B - 1; x++){ const i = (by * B + y) * w + bx * B + x; e += Math.abs(gr[i+1] - gr[i-1]) + Math.abs(gr[i+w] - gr[i-w]); }
+    d[by * bw + bx] = e / 36; mean += d[by * bw + bx]; }
+  mean /= d.length; const thr = Math.max(mean * 1.1, 6), rows = new Array(bh).fill(0), cols = new Array(bw).fill(0);
+  for (let by = 0; by < bh; by++) for (let bx = 0; bx < bw; bx++) if (d[by * bw + bx] > thr){ rows[by]++; cols[bx]++; }
+  const span = (a, n) => { const m = Math.max(...a); if (m < 2) return null; const tt = Math.max(2, m * .3); let lo = 0, hi = n - 1; while (lo < n && a[lo] < tt) lo++; while (hi > lo && a[hi] < tt) hi--; return hi > lo ? (hi + 1 - lo) / n : null; };
+  const fy = span(rows, bh), fx = span(cols, bw); return fy && fx ? { fx, fy } : null;
+}
+function startAuto(){
+  autoOn = true; lastKey = ''; fails = 0; chip('Håll kortet inom ramen');
+  const tick = async () => {
+    if (!autoOn) return;
+    if (!autoBusy && video.readyState >= 2){
+      autoBusy = true;
+      try {
+        const fr = grabFrame(), sharp = sharpness(fr), lum = brightness(fr);
+        if (lum < 45){ chip('För mörkt – tänd blixten eller gå till bättre ljus', true); }
+        else if (sharp < 40){ chip('Håll still – bilden är suddig', true); }
+        else if (!IDX.cards){ chip('Laddar kortdatabasen …'); }
+        else {
+          chip(lum > 225 ? 'Mycket ljust – undvik reflexer, luta kortet lite' : 'Läser av …', lum > 225);
+          const up = upscale(fr, 1300);
+          const r = await readCard(up, true); if (!autoOn) return;
+          let ranked = rankCandidates(r), art = [];
+          if (!strong(ranked)){ art = await artMatch(up).catch(() => []); if (!autoOn) return; ranked = withArt(rankCandidates(r), art); }
+          const key = ranked[0] ? ranked[0].card.id : '';
+          if (key && (strong(ranked) || (confident(ranked) && key === lastKey))){
+            autoOn = false; navigator.vibrate?.(60);
+            shot.classList.remove('fit'); shot.src = fr.toDataURL('image/jpeg', .9);
+            fillFields(r); stopCamera(); video.hidden = true; frame.hidden = true; shot.hidden = false;
+            await finish(r, ranked);
+            return;
+          }
+          lastKey = key; fails++;
+          // Ingen träff trots skarp bild: hjälp med avståndet
+          if (fails >= 2){
+            const ext = cardExtent();
+            if (ext && (ext.fy > .98 || ext.fx > .98)) chip('Backa lite – håll hela kortet inom ramen', true);
+            else if (ext && ext.fy < .6) chip('Gå närmare – fyll de gula hörnen med kortet', true);
+            else chip('Håll kortet still och rakt inom ramen', true);
+          }
+        }
+      } catch (e){  } finally { autoBusy = false; }
+    }
+    if (autoOn) autoTimer = setTimeout(tick, 300);
+  };
+  tick();
+}
 $('#snap').addEventListener('click', async () => {
+  // vänta tills en pågående automatisk avläsning är klar (textläsarna delas)
+  autoOn = false; clearTimeout(autoTimer); $('#autoChip').hidden = true;
+  while (autoBusy) await new Promise(r => setTimeout(r, 50));
   // Flera bilder efter varandra, den skarpaste används
   let c = grabFrame(), best = sharpness(c);
   for (let i = 0; i < 5; i++){ await new Promise(r => setTimeout(r, 80)); const f = grabFrame(), v = sharpness(f); if (v > best){ best = v; c = f; } }
@@ -1397,10 +1683,62 @@ async function lookup(){
   }
 }
 
+/* ---------- Pokédex: alla Pokémon, silhuett tills du har ett kort ---------- */
+let DEX = null, dexF = 'all';
+const SPRITE = id => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`;
+async function loadDex(){
+  if (DEX) return DEX;
+  try {
+    const l = await (await fetch('dex.json')).json();
+    DEX = l.map(([id, name, gen]) => ({ id, name, gen, key: normName(name) }));
+    DEX.byLen = [...DEX].sort((a, b) => b.key.length - a.key.length);
+  } catch { DEX = []; DEX.byLen = []; }
+  return DEX;
+}
+/* Vilka Pokémon finns i samlingen? dex-id från kortet, annars namnet (t.ex. "Dark Charizard" -> Charizard) */
+function caughtMap(){
+  const m = new Map();
+  for (const x of Object.values(store.get('coll', {}))){
+    let ids = Array.isArray(x.dex) ? x.dex.slice() : [];
+    if (!ids.length && DEX){
+      const k = ' ' + normName(x.name) + ' ';
+      const hit = DEX.byLen.find(d => k.includes(' ' + d.key + ' '));
+      if (hit) ids = [hit.id];
+    }
+    ids.forEach(id => m.set(id, (m.get(id) || 0) + (x.qty || 1)));
+  }
+  return m;
+}
+async function renderDex(){
+  await loadDex();
+  const st = $('#dexStatus'), g = $('#dexGrid');
+  if (!DEX.length){ st.textContent = 'Kunde inte läsa Pokémon-listan.'; return; } st.textContent = '';
+  const got = caughtMap(), n = DEX.filter(d => got.has(d.id)).length;
+  $('#dexCount').textContent = n; $('#dexTotal').textContent = DEX.length;
+  const pct = n / DEX.length * 100; $('#dexPct').textContent = (pct < 10 && n ? nf2.format(pct) : nf0.format(Math.round(pct))) + ' %'; $('#dexFill').style.width = Math.max(n ? 1.5 : 0, pct) + '%';
+  const arr = DEX.filter(d => dexF === 'all' || (dexF === 'got') === got.has(d.id));
+  g.innerHTML = arr.map(d => { const c = got.get(d.id);
+    return `<div class="dx${c ? ' on' : ''}"><small>#${String(d.id).padStart(4, '0')}</small><img loading="lazy" alt="" src="${SPRITE(d.id)}" onerror="this.style.visibility='hidden'"><span>${c ? esc(d.name) : '? ? ?'}</span>${c > 1 ? `<b>×${c}</b>` : ''}</div>`; }).join('')
+    || `<p class="status" style="grid-column:1/-1">${dexF === 'got' ? 'Inga fångade Pokémon än. Lägg kort i samlingen.' : 'Du har alla Pokémon!'}</p>`;
+}
+document.querySelectorAll('#collView button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('#collView button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  const dx = b.dataset.v === 'dex'; $('#collCards').hidden = dx; $('#dexView').hidden = !dx; if (dx) renderDex();
+}));
+document.querySelectorAll('#dexF button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('#dexF button').forEach(x => x.setAttribute('aria-pressed', x === b)); dexF = b.dataset.f; renderDex();
+}));
+
 /* ---------- Inställningar ---------- */
 const dlg = $('#settings');
-$('#openSettings').addEventListener('click', () => { $('#langSel').value = LANG; dlg.showModal(); });
+$('#openSettings').addEventListener('click', () => { $('#langSel').value = LANG; $('#varSel').value = VAR; $('#condDef').value = COND; $('#curSel').value = CUR; dlg.showModal(); });
 $('#closeSettings').addEventListener('click', () => dlg.close());
+$('#curSel').innerHTML = Object.entries(CURS).map(([k, v]) => `<option value="${k}">${k} · ${v[0]}</option>`).join('');
+$('#curSel').addEventListener('change', e => { CUR = e.target.value; store.set('cur', CUR); showRate(); if (list.length) renderGrid(); renderColl(); if (sheet.open && curDetail) showDetail(curDetail); });
+$('#rate').addEventListener('click', () => $('#openSettings').click());
+$('#condDef').innerHTML = CONDS.map(([k, n]) => `<option value="${k}">${k} · ${n}</option>`).join('');
+$('#condDef').addEventListener('change', e => { COND = e.target.value; store.set('cond', COND); if (list.length) renderGrid(); });
+$('#varSel').addEventListener('change', e => { VAR = e.target.value; store.set('variant', VAR); if (list.length) renderGrid(); });
 $('#langSel').addEventListener('change', e => { LANG = e.target.value; store.set('lang', LANG); loadSets(); });
 $('#wipe').addEventListener('click', e => {
   if (e.target.dataset.armed){ store.set('coll', {}); delete e.target.dataset.armed; e.target.textContent = 'Rensa samling'; renderColl(); dlg.close(); }
