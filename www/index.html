@@ -594,32 +594,86 @@ async function pool(items, n, fn){
 }
 
 /* ---------- Pris ---------- */
+const TP_NAMES = { normal: 'Vanlig', holofoil: 'Holo', reverseHolofoil: 'Reverse holo', '1stEditionNormal': '1st Edition', '1stEditionHolofoil': '1st Ed. holo', unlimited: 'Unlimited', unlimitedHolofoil: 'Unlimited holo' };
+const tpPrice = v => v && typeof v === 'object' ? (v.marketPrice || v.midPrice || v.lowPrice || v.directLowPrice || null) : null;
 function prices(c){
   const o = { cond: 'NM', main: null, src: '', metrics: [], series: [], updated: '', holo: false, hasHolo: false };
   if (!c.detailed) return o;
   const cm = c.cm, tp = c.tp;
   const cond = c.cond || COND, f = condF(cond);
   o.cond = cond;
-  const pick = c.pick || VAR, hasHolo = !!(cm && (cm['trend-holo'] || cm['avg-holo'] || cm['low-holo']));
-  let sfx = c.variants.holo && !c.variants.normal ? '-holo' : '';
-  if (pick === 'holo' && hasHolo) sfx = '-holo'; else if (pick === 'normal') sfx = '';
-  o.holo = sfx === '-holo'; o.hasHolo = hasHolo;
-  if (cm && (cm.trend || cm.avg || cm.low || cm['trend-holo'])){
-    const g = k => { const v = cm[k + sfx]; return v ? v * FX.EUR * f : null; };
+  const pick = c.pick || VAR;
+  const cmHolo = !!(cm && (cm['trend-holo'] || cm['avg-holo'] || cm['low-holo']));
+  const tpEntries = tp ? Object.entries(tp).filter(([, v]) => tpPrice(v)) : [];
+  const tpHolo = tpEntries.some(([k]) => /holo/i.test(k));
+  o.hasHolo = cmHolo || tpHolo;
+  const hasCm = !!(cm && ['trend', 'avg', 'low', 'avg7', 'avg30', 'avg1', 'trend-holo', 'avg-holo', 'low-holo'].some(k => cm[k]));
+  // Cardmarket: vald utgåva först, annars den andra (vissa kort saknar vanligt pris men har holopris, och tvärtom)
+  if (hasCm){
+    let sfx = c.variants?.holo && !c.variants?.normal ? '-holo' : '';
+    if (pick === 'holo' && cmHolo) sfx = '-holo'; else if (pick === 'normal') sfx = '';
+    const val = (k, sf) => cm[k + sf] || null;
+    const has = sf => ['trend', 'avg', 'low', 'avg7', 'avg30', 'avg1'].some(k => val(k, sf));
+    if (!has(sfx) && has(sfx ? '' : '-holo')) sfx = sfx ? '' : '-holo';
+    const g = k => { const v = val(k, sfx); return v ? v * FX.EUR * f : null; };
+    o.holo = sfx === '-holo';
     o.src = 'Cardmarket'; o.updated = (cm.updated || '').slice(0, 10);
-    o.main = g('trend') ?? g('avg') ?? g('low');
+    o.main = g('trend') ?? g('avg') ?? g('low') ?? g('avg7') ?? g('avg30') ?? g('avg1');
     o.metrics = [['Trendpris', g('trend')], ['Lägsta', g('low')], ['Snitt 1 dag', g('avg1')], ['Snitt 7 dagar', g('avg7')], ['Snitt 30 dagar', g('avg30')]];
     if (!sfx && cm['trend-holo']) o.metrics.push(['Holo, trend', cm['trend-holo'] * FX.EUR * f]);
     o.series = [[30, '30 d', g('avg30')], [7, '7 d', g('avg7')], [0, 'Nu', g('trend') ?? g('avg1')]].filter(x => x[2] != null);
-  } else if (tp){
-    const list = Object.entries(tp).filter(([,v]) => v && typeof v === 'object' && v.marketPrice);
-    if (list.length){
-      o.src = 'TCGplayer (USD)'; o.updated = (tp.updated || '').slice(0, 10);
-      o.main = list[0][1].marketPrice * FX.USD * f;
-      o.metrics = list.map(([k,v]) => [k, v.marketPrice * FX.USD * f]);
-    }
+  }
+  // TCGplayer som reserv: marknadspris, annars medel- eller lägsta pris
+  if (o.main == null && tpEntries.length){
+    const want = pick === 'holo' ? tpEntries.find(([k]) => /holo/i.test(k)) : pick === 'normal' ? tpEntries.find(([k]) => /normal|unlimited/i.test(k)) : null;
+    const first = want || tpEntries[0];
+    o.holo = /holo/i.test(first[0]);
+    o.src = 'TCGplayer (USD)'; o.updated = (tp.updated || '').slice(0, 10);
+    o.main = tpPrice(first[1]) * FX.USD * f;
+    o.metrics = tpEntries.map(([k, v]) => [TP_NAMES[k] || k, tpPrice(v) * FX.USD * f]);
   }
   return o;
+}
+/* Gratis reservkälla när TCGdex saknar pris: pokemontcg.io (ingen nyckel krävs). Returnerar priser i samma form som TCGdex, eller null. */
+const ptcgCache = new Map();
+function ptcgIds(c){
+  const i = String(c.id).lastIndexOf('-'), set = c.id.slice(0, i), num = String(c.id.slice(i + 1)).replace(/^0+(?=\d)/, '');
+  const s2 = set.replace(/^([a-z]+)0+(\d)/i, '$1$2').replace(/\./g, 'pt');
+  return [...new Set([c.id, s2 + '-' + num, set + '-' + num])];
+}
+function mapPtcg(d){
+  const n = v => (v > 0 ? v : null), out = { cm: null, tp: null };
+  const c = d?.cardmarket?.prices;
+  if (c) out.cm = { updated: String(d.cardmarket.updatedAt || '').replace(/\//g, '-'), avg: n(c.averageSellPrice), low: n(c.lowPrice), trend: n(c.trendPrice), avg1: n(c.avg1), avg7: n(c.avg7), avg30: n(c.avg30),
+    'avg-holo': n(c.reverseHoloSell), 'low-holo': n(c.reverseHoloLow), 'trend-holo': n(c.reverseHoloTrend), 'avg1-holo': n(c.reverseHoloAvg1), 'avg7-holo': n(c.reverseHoloAvg7), 'avg30-holo': n(c.reverseHoloAvg30) };
+  const t = d?.tcgplayer?.prices;
+  if (t){ out.tp = { updated: String(d.tcgplayer.updatedAt || '').replace(/\//g, '-') }; for (const [k, v] of Object.entries(t)) out.tp[k] = { lowPrice: v.low, midPrice: v.mid, highPrice: v.high, marketPrice: v.market, directLowPrice: v.directLow }; }
+  return out;
+}
+async function ptcgFetch(url){
+  const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 8000);
+  try { const r = await fetch(url, { signal: ctl.signal }); if (!r.ok) return null; return await r.json(); } catch { return null; } finally { clearTimeout(to); }
+}
+async function ptcgPrices(c){
+  if (ptcgCache.has(c.id)) return ptcgCache.get(c.id);
+  const job = (async () => {
+    for (const id of ptcgIds(c)){ const j = await ptcgFetch('https://api.pokemontcg.io/v2/cards/' + encodeURIComponent(id)); if (j?.data) return mapPtcg(j.data); }
+    const q = `name:"${String(c.name).replace(/"/g, '').replace(/\s+(ex|gx|v|vmax|vstar)$/i, '*')}" number:${String(c.number).replace(/^0+(?=\d)/, '')}`;
+    const j = await ptcgFetch('https://api.pokemontcg.io/v2/cards?pageSize=10&q=' + encodeURIComponent(q));
+    const hit = (j?.data || []).find(x => !c.total || String(x.set?.printedTotal) === String(c.total)) || null;
+    return hit ? mapPtcg(hit) : null;
+  })();
+  ptcgCache.set(c.id, job); return job;
+}
+const hasAnyPrice = c => prices({ ...c, detailed: true }).main != null;
+/* Fyll på pris från reservkällan om TCGdex saknar det */
+async function fillPrice(c){
+  if (!c.detailed || c.priceTried || hasAnyPrice(c)) return;
+  c.priceTried = true;
+  const r = await ptcgPrices(c).catch(() => null);
+  if (!r) return;
+  if (r.cm) c.cm = { ...(c.cm || {}), ...Object.fromEntries(Object.entries(r.cm).filter(([, v]) => v)) };
+  if (r.tp) c.tp = { ...(c.tp || {}), ...r.tp };
 }
 
 /* ---------- Flikar ---------- */
@@ -695,8 +749,12 @@ function burst(el){
   }
 }
 async function hydrate(c){
-  if (c.detailed) return;
-  try { Object.assign(c, norm(await api('/cards/' + encodeURIComponent(c.id)))); } catch { c.failed = true; }
+  if (c.detailed) return await fillPrice(c);
+  for (let i = 0; i < 3; i++){
+    try { Object.assign(c, norm(await api('/cards/' + encodeURIComponent(c.id)))); c.failed = false; break; }
+    catch { c.failed = true; await new Promise(r => setTimeout(r, 400 * (i + 1))); }
+  }
+  await fillPrice(c);
 }
 async function loadBatch(my, total){
   const batch = list.slice(shown, shown + PAGE); shown += batch.length;
@@ -946,7 +1004,7 @@ async function refreshColl(){
   if (!todo.length){ histAdd(collTotals(Object.values(coll)).now); return; }
   await pool(todo, 3, async x => {
     try {
-      const c = norm(await api('/cards/' + encodeURIComponent(x.id))); c.pick = x.holo ? 'holo' : 'auto'; c.cond = x.cond || 'NM';
+      const c = norm(await api('/cards/' + encodeURIComponent(x.id))); await fillPrice(c); c.pick = x.holo ? 'holo' : 'auto'; c.cond = x.cond || 'NM';
       const p = prices(c), at = k => p.series.find(s => s[0] === k)?.[2] ?? null;
       if (p.main != null){ x.sek = p.main; x.avg7 = at(7); x.avg30 = at(30); x.t = now; if (c.dex?.length) x.dex = c.dex; x.rarity = c.rarity; }
     } catch {}
