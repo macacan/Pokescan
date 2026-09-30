@@ -1,10 +1,10 @@
-# PokéScan
+# KortKoll
 
-Skanna Pokémon-kort och se vad de är värda i kronor. Kortdata och Cardmarket-priser kommer från [TCGdex](https://tcgdex.dev) (gratis, ingen nyckel), omräknade till SEK med dagens kurs.
+Skanna samlarkort och se vad de är värda i kronor. Kortdata och Cardmarket-priser kommer från [TCGdex](https://tcgdex.dev) (gratis, ingen nyckel), omräknade till SEK med dagens kurs.
 
 ## Ladda ner appen (Android)
 
-Gå till **Releases** till höger och ladda ner `PokeScan.apk`. Öppna filen på telefonen och tillåt installation av okända appar när Android frågar.
+Gå till **Releases** till höger och ladda ner `KortKoll.apk`. Öppna filen på telefonen och tillåt installation av okända appar när Android frågar.
 
 Varje gång något ändras i `main` bygger GitHub Actions en ny APK automatiskt.
 
@@ -22,12 +22,12 @@ Textläsaren (Tesseract), dess språkdata och typsnitten ligger i appen (`www/ve
 
 ## Publicera på Google Play
 
-1. **Skapa en uppladdningsnyckel** (en gång): `keytool -genkeypair -keystore pokescan-upload.jks -storetype PKCS12 -alias pokescan -keyalg RSA -keysize 2048 -validity 10000`. Spara filen och lösenorden säkert. Den får aldrig checkas in.
+1. **Skapa en uppladdningsnyckel** (en gång): `keytool -genkeypair -keystore kortkoll-upload.jks -storetype PKCS12 -alias pokescan -keyalg RSA -keysize 2048 -validity 10000`. Spara filen och lösenorden säkert. Den får aldrig checkas in.
 2. **Lägg in fyra hemligheter** under Settings > Secrets and variables > Actions:
-   `ANDROID_KEYSTORE_BASE64` (`base64 -w0 pokescan-upload.jks`), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
-3. **Kör workflowet** *Bygg för Google Play* (Actions > Run workflow). Det bygger en signerad AAB (`PokeScan.aab`) och en signerad APK, och lägger dem som en pre-release.
-4. **Ladda upp `PokeScan.aab`** i Play Console. Slå på Play App Signing när Google frågar (då är din nyckel bara uppladdningsnyckel och kan återställas).
-5. Fyll i integritetspolicy, dataskyddsformulär, innehållsbetyg och butikssida. Byt namn och ikon så de inte innehåller Pokémon-varumärken.
+   `ANDROID_KEYSTORE_BASE64` (`base64 -w0 kortkoll-upload.jks`), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
+3. **Kör workflowet** *Bygg för Google Play* (Actions > Run workflow). Det bygger en signerad AAB (`KortKoll.aab`) och en signerad APK, och lägger dem som en pre-release.
+4. **Ladda upp `KortKoll.aab`** i Play Console. Slå på Play App Signing när Google frågar (då är din nyckel bara uppladdningsnyckel och kan återställas).
+5. Fyll i integritetspolicy, dataskyddsformulär, innehållsbetyg och butikssida. Namn och ikon är egna och innehåller inga Pokémon-varumärken.
 
 Versionskoden (`versionCode`) är körningsnumret, så den ökar för varje bygge. Målversionen (target SDK) kommer från Capacitor 8 (Android 16 / API 36).
 

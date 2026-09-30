@@ -86,24 +86,24 @@ jobs:
 
       - name: Samla filer
         run: |
-          cp android/app/build/outputs/bundle/release/app-release.aab PokeScan.aab
-          cp android/app/build/outputs/apk/release/app-release.apk PokeScan-release.apk
-          ls -la PokeScan.aab PokeScan-release.apk
+          cp android/app/build/outputs/bundle/release/app-release.aab KortKoll.aab
+          cp android/app/build/outputs/apk/release/app-release.apk KortKoll-release.apk
+          ls -la KortKoll.aab KortKoll-release.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: PokeScan-play
+          name: KortKoll-play
           path: |
-            PokeScan.aab
-            PokeScan-release.apk
+            KortKoll.aab
+            KortKoll-release.apk
 
       - name: Publicera som utkast till release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: play-v1.0.${{ github.run_number }}
-          name: PokéScan för Google Play 1.0.${{ github.run_number }}
+          name: KortKoll för Google Play 1.0.${{ github.run_number }}
           prerelease: true
-          body: Ladda upp PokeScan.aab i Google Play Console (Produktion eller Stängd testning).
+          body: Ladda upp KortKoll.aab i Google Play Console (Produktion eller Stängd testning).
           files: |
-            PokeScan.aab
-            PokeScan-release.apk
+            KortKoll.aab
+            KortKoll-release.apk

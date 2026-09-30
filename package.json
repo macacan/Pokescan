@@ -1,8 +1,8 @@
 {
-  "name": "pokescan",
+  "name": "kortkoll",
   "version": "1.0.0",
   "private": true,
-  "description": "Skanna Pokémon-kort och se vad de är värda i kronor.",
+  "description": "Skanna samlarkort och se vad de är värda i kronor.",
   "scripts": {
     "icons": "capacitor-assets generate --android"
   },

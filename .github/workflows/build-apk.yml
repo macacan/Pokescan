@@ -51,23 +51,23 @@ jobs:
           log "ikoner";             run npm run icons || echo "ikoner hoppades över" | tee -a build.log
           log "cap sync";           run npx cap sync android
           log "gradle";             cd android && chmod +x gradlew && run ./gradlew assembleDebug --no-daemon --stacktrace; cd ..
-          cp android/app/build/outputs/apk/debug/app-debug.apk PokeScan.apk
-          echo "APK OK: $(du -h PokeScan.apk | cut -f1)" | tee -a build.log
+          cp android/app/build/outputs/apk/debug/app-debug.apk KortKoll.apk
+          echo "APK OK: $(du -h KortKoll.apk | cut -f1)" | tee -a build.log
 
       - name: Spara APK som artefakt
         uses: actions/upload-artifact@v4
         with:
-          name: PokeScan-apk
-          path: PokeScan.apk
+          name: KortKoll-apk
+          path: KortKoll.apk
 
       - id: release
         name: Publicera som release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
-          name: PokéScan 1.0.${{ github.run_number }}
-          body: Ladda ner PokeScan.apk nedan och öppna den på din Android-telefon.
-          files: PokeScan.apk
+          name: KortKoll 1.0.${{ github.run_number }}
+          body: Ladda ner KortKoll.apk nedan och öppna den på din Android-telefon.
+          files: KortKoll.apk
 
       - name: Skicka byggstatus till grenen build-status
         if: always()

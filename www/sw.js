@@ -1,5 +1,5 @@
-// PokéScan service worker: appskalet sparas offline, kort- och prisdata hämtas alltid färskt.
-const CACHE = 'pokescan-v7';
+// KortKoll service worker: appskalet sparas offline, kort- och prisdata hämtas alltid färskt.
+const CACHE = 'kortkoll-v8';
 const SHELL = ['./', './index.html', './fingerprint.js', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', e => {
