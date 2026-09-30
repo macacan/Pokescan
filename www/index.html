@@ -252,6 +252,9 @@ dialog.sheet::backdrop{background:rgba(6,10,30,.62);backdrop-filter:blur(4px);-w
 .meta{color:var(--ink-2);font-size:.9rem;margin:6px 0 0}
 .badge{display:inline-block;font-size:.72rem;font-weight:800;letter-spacing:.05em;background:linear-gradient(180deg,#ffe066,var(--yellow));color:#161d3f;border-radius:999px;padding:4px 11px;white-space:nowrap;box-shadow:0 2px 0 var(--yellow-lo)}
 .price{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:20px 0 4px}
+.seg{display:inline-flex;gap:4px;padding:4px;margin:12px 0 0;background:var(--surface-2);border:2px solid var(--line);border-radius:999px}
+.seg button{border:0;background:transparent;color:var(--ink-2);font:800 .85rem var(--body,inherit);padding:7px 18px;border-radius:999px;cursor:pointer;min-height:36px}
+.seg button[aria-pressed="true"]{background:linear-gradient(180deg,#ffe066,var(--yellow));color:#161d3f;box-shadow:0 2px 0 var(--yellow-lo)}
 .price .v{font:400 3.4rem/1 var(--display);letter-spacing:.01em;font-variant-numeric:tabular-nums;
   background:linear-gradient(180deg,var(--red-hi),var(--red) 60%,var(--red-lo));-webkit-background-clip:text;background-clip:text;color:transparent}
 .price .u{font:400 1.3rem var(--display);color:var(--ink-2)}
@@ -401,6 +404,8 @@ dialog a{color:var(--accent);font-weight:700}
 <dialog id="settings">
   <h2>Inställningar</h2>
   <p>Priserna hämtas gratis från TCGdex. Ingen nyckel behövs.</p>
+  <label class="field"><span>Pris för utgåva</span>
+    <select id="varSel"><option value="auto">Automatisk</option><option value="normal">Alltid vanlig</option><option value="holo">Holo när det finns</option></select></label>
   <label class="field"><span>Språk för kortnamn</span>
     <select id="langSel"><option value="en">English</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="es">Español</option><option value="it">Italiano</option><option value="pt">Português</option></select></label>
   <div class="dlg-actions">
@@ -442,6 +447,7 @@ function showRate(){ $('#rate').textContent = `1 € = ${nf2.format(FX.EUR)} kr$
 
 /* ---------- TCGdex API (gratis, ingen nyckel) ---------- */
 let LANG = store.get('lang', 'en');
+let VAR = store.get('variant', 'auto'); // standardutgåva för pris: auto | normal | holo
 async function api(path, tries = 2){
   for (let i = 0; i < tries; i++){
     const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 20000);
@@ -486,10 +492,13 @@ async function pool(items, n, fn){
 
 /* ---------- Pris ---------- */
 function prices(c){
-  const o = { main: null, src: '', metrics: [], series: [], updated: '' };
+  const o = { main: null, src: '', metrics: [], series: [], updated: '', holo: false, hasHolo: false };
   if (!c.detailed) return o;
   const cm = c.cm, tp = c.tp;
-  const sfx = c.variants.holo && !c.variants.normal ? '-holo' : '';
+  const pick = c.pick || VAR, hasHolo = !!(cm && (cm['trend-holo'] || cm['avg-holo'] || cm['low-holo']));
+  let sfx = c.variants.holo && !c.variants.normal ? '-holo' : '';
+  if (pick === 'holo' && hasHolo) sfx = '-holo'; else if (pick === 'normal') sfx = '';
+  o.holo = sfx === '-holo'; o.hasHolo = hasHolo;
   if (cm && (cm.trend || cm.avg || cm.low || cm['trend-holo'])){
     const g = k => { const v = cm[k + sfx]; return v ? v * FX.EUR : null; };
     o.src = 'Cardmarket'; o.updated = (cm.updated || '').slice(0, 10);
@@ -624,6 +633,7 @@ async function showDetail(c){
         ${c.rarity ? `<span class="badge">${esc(c.rarity)}</span>` : ''}</div>
       <div class="price"><span class="v">${p.main == null ? 'Pris saknas' : nf0.format(Math.round(p.main))}</span>${p.main == null ? '' : '<span class="u">kr</span>'}${delta}</div>
       <p class="src">${p.src ? 'Källa: ' + esc(p.src) + (p.updated ? ' · uppdaterad ' + esc(p.updated) : '') : 'Ingen prisdata finns för det här kortet.'}</p>
+      ${p.hasHolo ? `<div class="seg" role="group" aria-label="Utgåva"><button type="button" data-v="normal" aria-pressed="${!p.holo}">Vanlig</button><button type="button" data-v="holo" aria-pressed="${p.holo}">Holo</button></div>` : ''}
       ${s.length >= 2 ? '<div class="chart" id="chart"></div>' : ''}
       ${p.metrics.length ? `<div class="metrics">${p.metrics.map(([k,v]) => `<div class="metric"><div class="k">${esc(k)}</div><div class="val">${kr2(v)}</div></div>`).join('')}</div>` : ''}
       <div class="row">
@@ -635,6 +645,7 @@ async function showDetail(c){
   tilt($('#holo'));
   if (p.main != null) countUp(d.querySelector('.price .v'), p.main);
   if (s.length >= 2) drawChart($('#chart'), s);
+  d.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => { c.pick = b.dataset.v; showDetail(c); if (list.length) renderGrid(); }));
   $('#addColl').addEventListener('click', e => { addToColl(c); burst(e.target); e.target.textContent = 'Tillagd i samlingen'; e.target.disabled = true; });
 }
 
@@ -749,8 +760,8 @@ function drawChart(host, s){
 
 /* ---------- Samling ---------- */
 function addToColl(c){
-  const coll = store.get('coll', {}), p = prices(c), e = coll[c.id] || { qty: 0 };
-  coll[c.id] = { id: c.id, qty: e.qty + 1, name: c.name, set: c.setName, number: c.number, total: c.total, img: c.img, sek: p.main };
+  const coll = store.get('coll', {}), p = prices(c), key = c.id + (p.holo ? '#holo' : ''), e = coll[key] || { qty: 0 };
+  coll[key] = { id: c.id, key, holo: p.holo, qty: e.qty + 1, name: c.name, set: c.setName, number: c.number, total: c.total, img: c.img, sek: p.main };
   store.set('coll', coll);
 }
 function renderColl(){
@@ -764,18 +775,18 @@ function renderColl(){
   items.forEach(x => {
     const d = document.createElement('div');
     d.className = 'tile'; d.style.cursor = 'default';
-    d.innerHTML = `<img src="${esc(x.img)}" alt="${esc(x.name)}"><span class="n">${esc(x.name)}</span>
+    d.innerHTML = `<img src="${esc(x.img)}" alt="${esc(x.name)}"><span class="n">${esc(x.name)}${x.holo ? ' ✦ Holo' : ''}</span>
       <span class="s">${esc(x.set)} · ${esc(x.number)}${x.total ? '/' + esc(x.total) : ''}</span><span class="p">${kr((x.sek||0) * x.qty)}</span>
       <div class="qty"><button aria-label="Minska antal">−</button><b>${x.qty}</b><button aria-label="Öka antal">+</button></div>`;
     const [m, pl] = d.querySelectorAll('button');
-    const upd = q => { const c = store.get('coll', {}); if (q <= 0) delete c[x.id]; else c[x.id].qty = q; store.set('coll', c); renderColl(); };
+    const upd = q => { const c = store.get('coll', {}); const k = x.key || x.id; if (q <= 0) delete c[k]; else c[k].qty = q; store.set('coll', c); renderColl(); };
     m.addEventListener('click', () => upd(x.qty - 1)); pl.addEventListener('click', () => upd(x.qty + 1));
     g.appendChild(d);
   });
 }
 $('#exportCsv').addEventListener('click', () => {
   const rows = [['Namn','Set','Nummer','Antal','Värde per kort (SEK)']];
-  Object.values(store.get('coll', {})).forEach(x => rows.push([x.name, x.set, x.number + (x.total ? '/' + x.total : ''), x.qty, Math.round(x.sek || 0)]));
+  Object.values(store.get('coll', {})).forEach(x => rows.push([x.name + (x.holo ? ' (Holo)' : ''), x.set, x.number + (x.total ? '/' + x.total : ''), x.qty, Math.round(x.sek || 0)]));
   const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(';')).join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = 'pokescan-samling.csv'; a.click();
@@ -1399,8 +1410,9 @@ async function lookup(){
 
 /* ---------- Inställningar ---------- */
 const dlg = $('#settings');
-$('#openSettings').addEventListener('click', () => { $('#langSel').value = LANG; dlg.showModal(); });
+$('#openSettings').addEventListener('click', () => { $('#langSel').value = LANG; $('#varSel').value = VAR; dlg.showModal(); });
 $('#closeSettings').addEventListener('click', () => dlg.close());
+$('#varSel').addEventListener('change', e => { VAR = e.target.value; store.set('variant', VAR); if (list.length) renderGrid(); });
 $('#langSel').addEventListener('change', e => { LANG = e.target.value; store.set('lang', LANG); loadSets(); });
 $('#wipe').addEventListener('click', e => {
   if (e.target.dataset.armed){ store.set('coll', {}); delete e.target.dataset.armed; e.target.textContent = 'Rensa samling'; renderColl(); dlg.close(); }
