@@ -292,6 +292,10 @@ dialog.sheet::backdrop{background:rgba(6,10,30,.62);backdrop-filter:blur(4px);-w
 .dex-f{margin:0 0 14px}
 .dex-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:10px}
 .dx{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px 10px;border-radius:16px;background:var(--surface-2);border:2px solid var(--line);text-align:center;min-width:0;content-visibility:auto;contain-intrinsic-size:110px 120px}
+.dx{cursor:pointer}
+.dxart{display:grid;place-items:center;padding:18px;border-radius:20px;background:var(--surface-2);border:2px solid var(--line)}
+.dxart img{width:100%;max-width:260px;aspect-ratio:1;object-fit:contain;filter:brightness(0) opacity(.55)}
+.dxart.on img{filter:none}
 .dx small{font-size:.66rem;font-weight:800;color:var(--ink-3);letter-spacing:.04em}
 .dx img{width:72px;height:72px;object-fit:contain;image-rendering:pixelated;filter:brightness(0) opacity(.55)}
 .dx span{font-size:.72rem;font-weight:800;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-3)}
@@ -1718,9 +1722,42 @@ async function renderDex(){
   const pct = n / DEX.length * 100; $('#dexPct').textContent = (pct < 10 && n ? nf2.format(pct) : nf0.format(Math.round(pct))) + ' %'; $('#dexFill').style.width = Math.max(n ? 1.5 : 0, pct) + '%';
   const arr = DEX.filter(d => dexF === 'all' || (dexF === 'got') === got.has(d.id));
   g.innerHTML = arr.map(d => { const c = got.get(d.id);
-    return `<div class="dx${c ? ' on' : ''}"><small>#${String(d.id).padStart(4, '0')}</small><img loading="lazy" alt="" src="${SPRITE(d.id)}" onerror="this.style.visibility='hidden'"><span>${c ? esc(d.name) : '? ? ?'}</span>${c > 1 ? `<b>×${c}</b>` : ''}</div>`; }).join('')
+    return `<div class="dx${c ? ' on' : ''}" data-id="${d.id}" role="button" tabindex="0"><small>#${String(d.id).padStart(4, '0')}</small><img loading="lazy" alt="" src="${SPRITE(d.id)}" onerror="this.style.visibility='hidden'"><span>${c ? esc(d.name) : '? ? ?'}</span>${c > 1 ? `<b>×${c}</b>` : ''}</div>`; }).join('')
     || `<p class="status" style="grid-column:1/-1">${dexF === 'got' ? 'Inga fångade Pokémon än. Lägg kort i samlingen.' : 'Du har alla Pokémon!'}</p>`;
 }
+/* Pokémon-info (PokeAPI, gratis): tryck på en ruta i Pokédexen */
+const TYPES_SV = { normal: 'Normal', fire: 'Eld', water: 'Vatten', electric: 'Elektrisk', grass: 'Gräs', ice: 'Is', fighting: 'Kamp', poison: 'Gift', ground: 'Mark', flying: 'Flygande', psychic: 'Psykisk', bug: 'Insekt', rock: 'Sten', ghost: 'Spöke', dragon: 'Drake', dark: 'Mörk', steel: 'Stål', fairy: 'Fe' };
+const ARTWORK = id => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png`;
+const pokeCache = new Map();
+function pokeInfo(id){
+  if (!pokeCache.has(id)){
+    const get = u => fetch(u).then(r => r.ok ? r.json() : Promise.reject());
+    pokeCache.set(id, Promise.all([get(`https://pokeapi.co/api/v2/pokemon/${id}`), get(`https://pokeapi.co/api/v2/pokemon-species/${id}`)]).then(([p, sp]) => ({ p, sp })).catch(() => { pokeCache.delete(id); return null; }));
+  }
+  return pokeCache.get(id);
+}
+async function showDexEntry(id){
+  const d = DEX.find(x => x.id === id); if (!d) return;
+  const got = caughtMap(), n = got.get(id) || 0, dd = $('#detail');
+  dd.innerHTML = `<div class="detail"><div class="art"><div class="dxart${n ? ' on' : ''}"><img alt="" src="${ARTWORK(id)}" onerror="this.src='${SPRITE(id)}'"></div></div>
+    <div><div class="d-head"><div><h2>${n ? esc(d.name) : '? ? ?'}</h2><p class="meta">#${String(id).padStart(4, '0')} · Generation ${d.gen}</p></div>${n ? `<span class="badge">${n} kort</span>` : ''}</div>
+      <p class="src" id="dxLore">${n ? 'Hämtar Pokémon-info …' : 'Du har inte fångat den här än. Lägg ett kort med den i samlingen så visas namn och info.'}</p><div id="dxInfo"></div></div></div>`;
+  openSheet();
+  if (!n) return;
+  const r = await pokeInfo(id), lore = document.getElementById('dxLore'); if (!lore) return;
+  if (!r){ lore.textContent = 'Kunde inte hämta Pokémon-info just nu (kräver internet).'; return; }
+  const { p, sp } = r, en = l => (l || []).filter(x => x.language.name === 'en');
+  const text = (en(sp.flavor_text_entries).pop()?.flavor_text || '').replace(/[\n\f\u00ad]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const genus = en(sp.genera)[0]?.genus || '';
+  lore.textContent = text || ''; lore.style.fontSize = '.95rem'; lore.style.color = 'var(--ink-2)';
+  const rows = [['Art', genus], ['Typ', p.types.map(t => TYPES_SV[t.type.name] || t.type.name).join(', ')], ['Längd', (p.height / 10).toLocaleString('sv-SE') + ' m'], ['Vikt', (p.weight / 10).toLocaleString('sv-SE') + ' kg'],
+    ['Förmågor', p.abilities.map(a => a.ability.name.replace(/-/g, ' ')).join(', ')], ['Status', sp.is_legendary ? 'Legendarisk' : sp.is_mythical ? 'Mytisk' : sp.is_baby ? 'Baby' : ''], ['Habitat', sp.habitat?.name || '']];
+  $('#dxInfo').innerHTML = `<dl class="info">${rows.filter(r => r[1]).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
+    <div class="metrics">${p.stats.slice(0, 6).map(x => `<div class="metric"><div class="k">${esc({ hp: 'HP', attack: 'Anfall', defense: 'Försvar', 'special-attack': 'Sp. anfall', 'special-defense': 'Sp. försvar', speed: 'Fart' }[x.stat.name] || x.stat.name)}</div><div class="val">${x.base_stat}</div></div>`).join('')}</div>`;
+}
+$('#dexGrid').addEventListener('click', e => { const c = e.target.closest('.dx'); if (c) showDexEntry(+c.dataset.id); });
+$('#dexGrid').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('.dx')){ e.preventDefault(); showDexEntry(+e.target.closest('.dx').dataset.id); } });
+
 document.querySelectorAll('#collView button').forEach(b => b.addEventListener('click', () => {
   document.querySelectorAll('#collView button').forEach(x => x.setAttribute('aria-pressed', x === b));
   const dx = b.dataset.v === 'dex'; $('#collCards').hidden = dx; $('#dexView').hidden = !dx; if (dx) renderDex();
