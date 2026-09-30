@@ -252,6 +252,7 @@ dialog.sheet::backdrop{background:rgba(6,10,30,.62);backdrop-filter:blur(4px);-w
 .meta{color:var(--ink-2);font-size:.9rem;margin:6px 0 0}
 .badge{display:inline-block;font-size:.72rem;font-weight:800;letter-spacing:.05em;background:linear-gradient(180deg,#ffe066,var(--yellow));color:#161d3f;border-radius:999px;padding:4px 11px;white-space:nowrap;box-shadow:0 2px 0 var(--yellow-lo)}
 .price{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:20px 0 4px}
+.field.cond{margin-top:12px;max-width:260px}
 .seg{display:inline-flex;gap:4px;padding:4px;margin:12px 0 0;background:var(--surface-2);border:2px solid var(--line);border-radius:999px}
 .seg button{border:0;background:transparent;color:var(--ink-2);font:800 .85rem var(--body,inherit);padding:7px 18px;border-radius:999px;cursor:pointer;min-height:36px}
 .seg button[aria-pressed="true"]{background:linear-gradient(180deg,#ffe066,var(--yellow));color:#161d3f;box-shadow:0 2px 0 var(--yellow-lo)}
@@ -399,13 +400,15 @@ dialog a{color:var(--accent);font-weight:700}
     <div class="empty" id="collEmpty">Samlingen är tom. Slå upp ett kort och välj “Lägg i samling”.</div>
   </section>
 </main>
-<p class="foot">Kortdata och priser från TCGdex. Priser är Cardmarket (EUR) omräknade till SEK och gäller ungefär Near Mint. Se dem som en riktpunkt.</p>
+<p class="foot">Kortdata och priser från TCGdex. Priser är Cardmarket (EUR) omräknade till SEK och gäller ungefär Near Mint. Andra skick är uppskattade avdrag. Se dem som en riktpunkt.</p>
 
 <dialog id="settings">
   <h2>Inställningar</h2>
   <p>Priserna hämtas gratis från TCGdex. Ingen nyckel behövs.</p>
   <label class="field"><span>Pris för utgåva</span>
     <select id="varSel"><option value="auto">Automatisk</option><option value="normal">Alltid vanlig</option><option value="holo">Holo när det finns</option></select></label>
+  <label class="field"><span>Standardskick</span>
+    <select id="condDef"></select></label>
   <label class="field"><span>Språk för kortnamn</span>
     <select id="langSel"><option value="en">English</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="es">Español</option><option value="it">Italiano</option><option value="pt">Português</option></select></label>
   <div class="dlg-actions">
@@ -447,6 +450,10 @@ function showRate(){ $('#rate').textContent = `1 € = ${nf2.format(FX.EUR)} kr$
 
 /* ---------- TCGdex API (gratis, ingen nyckel) ---------- */
 let LANG = store.get('lang', 'en');
+/* Skick: Cardmarkets pris gäller ungefär Near Mint, övriga skick är uppskattade avdrag */
+const CONDS = [['MT', 'Mint', 1.1], ['NM', 'Near Mint', 1], ['EX', 'Excellent', .85], ['GD', 'Good', .7], ['LP', 'Light Played', .55], ['PL', 'Played', .4], ['PO', 'Poor', .25]];
+const condF = k => (CONDS.find(x => x[0] === k) || CONDS[1])[2];
+let COND = store.get('cond', 'NM');
 let VAR = store.get('variant', 'auto'); // standardutgåva för pris: auto | normal | holo
 async function api(path, tries = 2){
   for (let i = 0; i < tries; i++){
@@ -492,26 +499,28 @@ async function pool(items, n, fn){
 
 /* ---------- Pris ---------- */
 function prices(c){
-  const o = { main: null, src: '', metrics: [], series: [], updated: '', holo: false, hasHolo: false };
+  const o = { cond: 'NM', main: null, src: '', metrics: [], series: [], updated: '', holo: false, hasHolo: false };
   if (!c.detailed) return o;
   const cm = c.cm, tp = c.tp;
+  const cond = c.cond || COND, f = condF(cond);
+  o.cond = cond;
   const pick = c.pick || VAR, hasHolo = !!(cm && (cm['trend-holo'] || cm['avg-holo'] || cm['low-holo']));
   let sfx = c.variants.holo && !c.variants.normal ? '-holo' : '';
   if (pick === 'holo' && hasHolo) sfx = '-holo'; else if (pick === 'normal') sfx = '';
   o.holo = sfx === '-holo'; o.hasHolo = hasHolo;
   if (cm && (cm.trend || cm.avg || cm.low || cm['trend-holo'])){
-    const g = k => { const v = cm[k + sfx]; return v ? v * FX.EUR : null; };
+    const g = k => { const v = cm[k + sfx]; return v ? v * FX.EUR * f : null; };
     o.src = 'Cardmarket'; o.updated = (cm.updated || '').slice(0, 10);
     o.main = g('trend') ?? g('avg') ?? g('low');
     o.metrics = [['Trendpris', g('trend')], ['Lägsta', g('low')], ['Snitt 1 dag', g('avg1')], ['Snitt 7 dagar', g('avg7')], ['Snitt 30 dagar', g('avg30')]];
-    if (!sfx && cm['trend-holo']) o.metrics.push(['Holo, trend', cm['trend-holo'] * FX.EUR]);
+    if (!sfx && cm['trend-holo']) o.metrics.push(['Holo, trend', cm['trend-holo'] * FX.EUR * f]);
     o.series = [[30, '30 d', g('avg30')], [7, '7 d', g('avg7')], [0, 'Nu', g('trend') ?? g('avg1')]].filter(x => x[2] != null);
   } else if (tp){
     const list = Object.entries(tp).filter(([,v]) => v && typeof v === 'object' && v.marketPrice);
     if (list.length){
       o.src = 'TCGplayer (USD)'; o.updated = (tp.updated || '').slice(0, 10);
-      o.main = list[0][1].marketPrice * FX.USD;
-      o.metrics = list.map(([k,v]) => [k, v.marketPrice * FX.USD]);
+      o.main = list[0][1].marketPrice * FX.USD * f;
+      o.metrics = list.map(([k,v]) => [k, v.marketPrice * FX.USD * f]);
     }
   }
   return o;
@@ -632,8 +641,9 @@ async function showDetail(c){
         <p class="meta">${esc(c.setName)} · ${esc(c.number)}${c.total ? '/' + esc(c.total) : ''}${c.artist ? ' · ' + esc(c.artist) : ''}</p></div>
         ${c.rarity ? `<span class="badge">${esc(c.rarity)}</span>` : ''}</div>
       <div class="price"><span class="v">${p.main == null ? 'Pris saknas' : nf0.format(Math.round(p.main))}</span>${p.main == null ? '' : '<span class="u">kr</span>'}${delta}</div>
-      <p class="src">${p.src ? 'Källa: ' + esc(p.src) + (p.updated ? ' · uppdaterad ' + esc(p.updated) : '') : 'Ingen prisdata finns för det här kortet.'}</p>
+      <p class="src">${p.src ? 'Källa: ' + esc(p.src) + (p.updated ? ' · uppdaterad ' + esc(p.updated) : '') + (p.cond !== 'NM' ? ' · skick ' + esc(p.cond) + ' är en uppskattning' : '') : 'Ingen prisdata finns för det här kortet.'}</p>
       ${p.hasHolo ? `<div class="seg" role="group" aria-label="Utgåva"><button type="button" data-v="normal" aria-pressed="${!p.holo}">Vanlig</button><button type="button" data-v="holo" aria-pressed="${p.holo}">Holo</button></div>` : ''}
+      <label class="field cond"><span>Skick</span><select id="condSel">${CONDS.map(([k, n]) => `<option value="${k}"${k === p.cond ? ' selected' : ''}>${k} · ${n}</option>`).join('')}</select></label>
       ${s.length >= 2 ? '<div class="chart" id="chart"></div>' : ''}
       ${p.metrics.length ? `<div class="metrics">${p.metrics.map(([k,v]) => `<div class="metric"><div class="k">${esc(k)}</div><div class="val">${kr2(v)}</div></div>`).join('')}</div>` : ''}
       <div class="row">
@@ -646,6 +656,7 @@ async function showDetail(c){
   if (p.main != null) countUp(d.querySelector('.price .v'), p.main);
   if (s.length >= 2) drawChart($('#chart'), s);
   d.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => { c.pick = b.dataset.v; showDetail(c); if (list.length) renderGrid(); }));
+  $('#condSel').addEventListener('change', e => { c.cond = e.target.value; showDetail(c); if (list.length) renderGrid(); });
   $('#addColl').addEventListener('click', e => { addToColl(c); burst(e.target); e.target.textContent = 'Tillagd i samlingen'; e.target.disabled = true; });
 }
 
@@ -760,8 +771,8 @@ function drawChart(host, s){
 
 /* ---------- Samling ---------- */
 function addToColl(c){
-  const coll = store.get('coll', {}), p = prices(c), key = c.id + (p.holo ? '#holo' : ''), e = coll[key] || { qty: 0 };
-  coll[key] = { id: c.id, key, holo: p.holo, qty: e.qty + 1, name: c.name, set: c.setName, number: c.number, total: c.total, img: c.img, sek: p.main };
+  const coll = store.get('coll', {}), p = prices(c), key = c.id + (p.holo ? '#holo' : '') + (p.cond !== 'NM' ? '#' + p.cond : ''), e = coll[key] || { qty: 0 };
+  coll[key] = { id: c.id, key, holo: p.holo, cond: p.cond, qty: e.qty + 1, name: c.name, set: c.setName, number: c.number, total: c.total, img: c.img, sek: p.main };
   store.set('coll', coll);
 }
 function renderColl(){
@@ -775,7 +786,7 @@ function renderColl(){
   items.forEach(x => {
     const d = document.createElement('div');
     d.className = 'tile'; d.style.cursor = 'default';
-    d.innerHTML = `<img src="${esc(x.img)}" alt="${esc(x.name)}"><span class="n">${esc(x.name)}${x.holo ? ' ✦ Holo' : ''}</span>
+    d.innerHTML = `<img src="${esc(x.img)}" alt="${esc(x.name)}"><span class="n">${esc(x.name)}${x.holo ? ' ✦ Holo' : ''}${x.cond && x.cond !== 'NM' ? ' · ' + esc(x.cond) : ''}</span>
       <span class="s">${esc(x.set)} · ${esc(x.number)}${x.total ? '/' + esc(x.total) : ''}</span><span class="p">${kr((x.sek||0) * x.qty)}</span>
       <div class="qty"><button aria-label="Minska antal">−</button><b>${x.qty}</b><button aria-label="Öka antal">+</button></div>`;
     const [m, pl] = d.querySelectorAll('button');
@@ -786,7 +797,7 @@ function renderColl(){
 }
 $('#exportCsv').addEventListener('click', () => {
   const rows = [['Namn','Set','Nummer','Antal','Värde per kort (SEK)']];
-  Object.values(store.get('coll', {})).forEach(x => rows.push([x.name + (x.holo ? ' (Holo)' : ''), x.set, x.number + (x.total ? '/' + x.total : ''), x.qty, Math.round(x.sek || 0)]));
+  Object.values(store.get('coll', {})).forEach(x => rows.push([x.name + (x.holo ? ' (Holo)' : '') + (x.cond && x.cond !== 'NM' ? ' (' + x.cond + ')' : ''), x.set, x.number + (x.total ? '/' + x.total : ''), x.qty, Math.round(x.sek || 0)]));
   const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(';')).join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = 'pokescan-samling.csv'; a.click();
@@ -1410,8 +1421,10 @@ async function lookup(){
 
 /* ---------- Inställningar ---------- */
 const dlg = $('#settings');
-$('#openSettings').addEventListener('click', () => { $('#langSel').value = LANG; $('#varSel').value = VAR; dlg.showModal(); });
+$('#openSettings').addEventListener('click', () => { $('#langSel').value = LANG; $('#varSel').value = VAR; $('#condDef').value = COND; dlg.showModal(); });
 $('#closeSettings').addEventListener('click', () => dlg.close());
+$('#condDef').innerHTML = CONDS.map(([k, n]) => `<option value="${k}">${k} · ${n}</option>`).join('');
+$('#condDef').addEventListener('change', e => { COND = e.target.value; store.set('cond', COND); if (list.length) renderGrid(); });
 $('#varSel').addEventListener('change', e => { VAR = e.target.value; store.set('variant', VAR); if (list.length) renderGrid(); });
 $('#langSel').addEventListener('change', e => { LANG = e.target.value; store.set('lang', LANG); loadSets(); });
 $('#wipe').addEventListener('click', e => {
