@@ -8,48 +8,45 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: apk
+  cancel-in-progress: true
+
 jobs:
   apk:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
 
       - uses: android-actions/setup-android@v3
 
-      - name: Installera Capacitor
-        run: npm install
-
-      - name: Skapa Android-projekt
-        run: npx cap add android
-
-      - name: Kamerabehörighet
+      - name: Bygg APK (loggas till build.log)
+        shell: bash
         run: |
+          set -o pipefail
+          log() { echo "::group::$1"; echo "===== $1 =====" >> build.log; }
+          run() { "$@" 2>&1 | tee -a build.log; }
+          log "npm install";        run npm install --no-audit --no-fund
+          log "cap add android";    run npx cap add android
+          log "kamerabehörighet"
           M=android/app/src/main/AndroidManifest.xml
           sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />#' $M
           grep -q 'android.permission.CAMERA' $M
-          cat $M
-
-      - name: Appikoner
-        run: npm run icons || echo "Ikoner hoppades över"
-
-      - name: Synka webbfiler
-        run: npx cap sync android
-
-      - name: Bygg APK
-        working-directory: android
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
-          cp app/build/outputs/apk/debug/app-debug.apk ../PokeScan.apk
+          run cat $M
+          log "ikoner";             run npm run icons || echo "ikoner hoppades över" | tee -a build.log
+          log "cap sync";           run npx cap sync android
+          log "gradle";             cd android && chmod +x gradlew && run ./gradlew assembleDebug --no-daemon --stacktrace; cd ..
+          cp android/app/build/outputs/apk/debug/app-debug.apk PokeScan.apk
+          echo "APK OK: $(du -h PokeScan.apk | cut -f1)" | tee -a build.log
 
       - name: Spara APK som artefakt
         uses: actions/upload-artifact@v4
@@ -64,3 +61,17 @@ jobs:
           name: PokéScan 1.0.${{ github.run_number }}
           body: Ladda ner PokeScan.apk nedan och öppna den på din Android-telefon.
           files: PokeScan.apk
+
+      - name: Skicka byggstatus till grenen build-status
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p /tmp/st && cp build.log /tmp/st/ 2>/dev/null || echo "ingen logg" > /tmp/st/build.log
+          tail -c 60000 /tmp/st/build.log > /tmp/st/tail.log
+          echo "run=${{ github.run_number }} status=${{ job.status }} sha=${{ github.sha }}" > /tmp/st/status.txt
+          git config user.name "github-actions"; git config user.email "actions@github.com"
+          git checkout --orphan build-status
+          git rm -rfq . >/dev/null 2>&1 || true
+          cp /tmp/st/tail.log build.log; cp /tmp/st/status.txt status.txt
+          git add build.log status.txt && git commit -qm "Byggstatus ${{ github.run_number }}: ${{ job.status }}"
+          git push -f origin build-status
