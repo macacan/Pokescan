@@ -1,5 +1,5 @@
 // PokéScan service worker: appskalet sparas offline, kort- och prisdata hämtas alltid färskt.
-const CACHE = 'pokescan-v4';
+const CACHE = 'pokescan-v5';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', e => {
