@@ -1,0 +1,36 @@
+name: Bygg kortindex
+
+# Laddar ner alla kortbilder från TCGdex (gratis) och räknar ut bildfingeravtryck till www/hashes.*.
+# Körs för hand (Actions > Bygg kortindex > Run workflow) och sedan varje månad. Startar därefter APK-bygget.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 1 * *'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  hashes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: npm i --no-save --no-audit --no-fund sharp
+      - run: node tools/build-hashes.mjs
+      - name: Spara och starta APK-bygget
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions"; git config user.email "actions@github.com"
+          git add www/hashes.bin www/hashes.json
+          if git diff --cached --quiet; then echo "Inga ändringar"; exit 0; fi
+          git commit -m "Uppdatera kortindex med bildfingeravtryck"
+          git push origin HEAD:main
+          gh workflow run build-apk.yml --ref main
