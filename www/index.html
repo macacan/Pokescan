@@ -150,6 +150,17 @@ input::placeholder{color:var(--ink-3);font-weight:400}
 @keyframes corner{50%{opacity:.55}}
 .frame.busy::after{content:"";position:absolute;left:4px;right:4px;height:4px;border-radius:2px;background:linear-gradient(90deg,transparent,var(--yellow),#fff,var(--yellow),transparent);box-shadow:0 0 18px var(--yellow);animation:sweep 1.3s ease-in-out infinite}
 @keyframes sweep{0%{top:3%}50%{top:95%}100%{top:3%}}
+.auto-add{display:flex;gap:10px;align-items:center;margin:12px 4px 0;font-weight:700;font-size:.88rem;color:var(--ink-2);cursor:pointer}
+.auto-add input{width:22px;height:22px;min-height:0;padding:0;flex:none;accent-color:var(--accent)}
+.hit{position:absolute;left:10px;right:10px;top:10px;z-index:6;display:grid;grid-template-columns:44px minmax(0,1fr) 88px;gap:10px;align-items:center;padding:8px;border-radius:16px;background:rgba(6,10,30,.9);border:2px solid var(--yellow);color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.45);animation:rise .3s cubic-bezier(.2,1.3,.4,1) both}
+.hit img{position:static;inset:auto;width:44px;height:auto;aspect-ratio:63/88;object-fit:contain;border-radius:5px;background:rgba(255,255,255,.1)}
+.hit-t{display:flex;flex-direction:column;min-width:0;line-height:1.25}
+.hit-t b{font-size:.92rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hit-t span{font-size:.76rem;color:#d3daf5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hit-t #hitCount{color:var(--yellow);font-weight:800}
+.hit-b{display:flex;flex-direction:column;gap:4px}
+.hit-b button{width:100%;min-height:0;border:0;border-radius:999px;padding:5px 12px;font:800 .72rem var(--body);cursor:pointer;background:rgba(255,255,255,.14);color:#fff}
+.hit-b button:first-child{background:var(--yellow);color:#161d3f}
 .auto-chip{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:4;width:max-content;max-width:calc(100% - 28px);text-align:center;
   background:rgba(6,10,30,.78);color:#fff;font-weight:800;font-size:.86rem;padding:8px 14px;border-radius:999px;border:1px solid rgba(255,203,5,.55);transition:background .25s,border-color .25s}
 .auto-chip.warn{background:rgba(120,50,0,.85);border-color:var(--yellow)}
@@ -240,6 +251,7 @@ dialog.sheet::backdrop{background:rgba(6,10,30,.62);backdrop-filter:blur(4px);-w
 .detail{display:grid;grid-template-columns:minmax(0,310px) minmax(0,1fr);gap:28px}
 @media (max-width:720px){.detail{grid-template-columns:1fr}.detail .art{max-width:280px;margin:0 auto;width:100%}}
 .art{perspective:900px}
+.add-top{width:100%;margin-top:14px}
 .holo{--rx:0deg;--ry:0deg;--mx:50%;--my:50%;--o:0;position:relative;border-radius:16px;transform:rotateX(var(--rx)) rotateY(var(--ry));transform-style:preserve-3d;
   transition:transform .25s ease-out;box-shadow:0 18px 40px rgba(22,29,63,.35);animation:hover 5s ease-in-out infinite;touch-action:pan-y}
 .holo.live{animation:none;transition:transform .06s linear}
@@ -390,6 +402,11 @@ dialog a{color:var(--accent);font-weight:700}
             <div class="fx-msg" id="fxMsg"></div>
             <div class="fx-sub"><span id="fxSub">Läser av kortet</span><span class="fx-dots"></span></div>
           </div>
+          <div class="hit" id="hit" hidden>
+            <img id="hitImg" alt="">
+            <div class="hit-t"><b id="hitName"></b><span id="hitSub"></span><span id="hitCount"></span></div>
+            <div class="hit-b"><button type="button" id="hitUndo">Ångra</button><button type="button" id="hitShow">Samling</button></div>
+          </div>
           <div class="auto-chip" id="autoChip" hidden>Håll kortet inom ramen</div>
           <button class="torch" id="torch" type="button" aria-label="Ficklampa" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg><span>Blixt</span></button>
           <div class="vf-hint" id="vfHint">
@@ -403,6 +420,7 @@ dialog a{color:var(--accent);font-weight:700}
           <button class="btn yellow" id="snap" disabled>Ta bild</button>
           <label class="btn quiet" style="cursor:pointer">Bibliotek<input id="file" type="file" accept="image/*" hidden></label>
         </div>
+        <label class="auto-add"><input type="checkbox" id="autoAdd"><span>Lägg till direkt i samlingen och fortsätt skanna</span></label>
       </div>
       <div>
         <div class="row" id="ocrFields" hidden>
@@ -816,7 +834,7 @@ async function showDetail(c){
     delta = `<span class="delta ${up ? 'up' : 'down'}"><svg viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">${up ? '<path d="M6 1l5 9H1z"/>' : '<path d="M6 11L1 2h10z"/>'}</svg>${up ? '+' : '−'}${nf0.format(Math.abs(pct))} % mot snitt 30 dagar</span>`;
   }
   d.innerHTML = `<div class="detail">
-    <div class="art"><div class="holo" id="holo"><img src="${esc(c.imgL || c.img)}" alt="${esc(c.name)}"><span class="shine"></span></div></div>
+    <div class="art"><div class="holo" id="holo"><img src="${esc(c.imgL || c.img)}" alt="${esc(c.name)}"><span class="shine"></span></div><button class="btn yellow add-top" id="addColl" type="button">Lägg i samling</button></div>
     <div>
       <div class="d-head"><div><h2>${esc(c.name)}</h2>
         <p class="meta">${esc(c.setName)} · ${esc(c.number)}${c.total ? '/' + esc(c.total) : ''}${c.artist ? ' · ' + esc(c.artist) : ''}</p></div>
@@ -829,7 +847,6 @@ async function showDetail(c){
       ${p.metrics.length ? `<div class="metrics">${p.metrics.map(([k,v]) => `<div class="metric"><div class="k">${esc(k)}</div><div class="val">${kr2(v)}</div></div>`).join('')}</div>` : ''}
       ${infoTable(c)}
       <div class="row">
-        <button class="btn yellow" id="addColl">Lägg i samling</button>
         <a class="btn quiet" href="${esc(link)}" target="_blank" rel="noopener">Sök på Cardmarket</a>
       </div>
     </div></div>`;
@@ -959,6 +976,7 @@ function addToColl(c){
   coll[key] = { id: c.id, dex: c.dex || [], key, holo: p.holo, cond: p.cond, qty: e.qty + 1, name: c.name, set: c.setName, number: c.number, total: c.total, img: c.img,
     sek: p.main, avg7: at(7), avg30: at(30), t: Date.now(), added: e.added || new Date().toISOString(), rarity: c.rarity };
   store.set('coll', coll); histAdd(collTotals(Object.values(coll)).now);
+  return key;
 }
 
 /* ---------- Portfölj: värde, förändring och diagram ---------- */
@@ -1305,6 +1323,34 @@ function grabFrame(){
   c.getContext('2d').drawImage(video, ox + (visW - cw) / 2, oy + (visH - ch) / 2, cw, ch, 0, 0, c.width, c.height);
   return c;
 }
+/* ---------- Skanna flera: lägg till direkt och fortsätt ---------- */
+let batchN = 0, batchSum = 0, blockKey = '', blockUntil = 0, hitT = null, hitUndo = null;
+$('#autoAdd').checked = store.get('autoAdd', true);
+$('#autoAdd').addEventListener('change', e => store.set('autoAdd', e.target.checked));
+function showHit(c, p, sub){
+  $('#hitImg').src = c.img || ''; $('#hitName').textContent = c.name;
+  $('#hitSub').textContent = sub; $('#hitCount').textContent = batchN ? `${batchN} ${batchN === 1 ? 'kort' : 'kort'} tillagda · ${kr(batchSum)}` : '';
+  $('#hit').hidden = false; clearTimeout(hitT); hitT = setTimeout(() => { $('#hit').hidden = true; }, 5000);
+}
+async function batchAdd(card){
+  const c = { id: card.id, name: card.name, number: card.localId, img: card.image ? card.image + '/low.webp' : '', setName: IDX.sets[card.set]?.name, total: IDX.sets[card.set]?.official, detailed: false };
+  navigator.vibrate?.(60);
+  showHit(c, null, 'Hämtar pris …');
+  await hydrate(c);
+  const p = prices(c), key = addToColl(c);
+  batchN++; batchSum += p.main || 0; hitUndo = { key, sek: p.main || 0 };
+  showHit(c, p, `${c.setName || ''}${c.setName ? ' · ' : ''}${p.main == null ? 'Pris saknas' : kr(p.main)}`);
+  chip('Tillagd! Visa nästa kort');
+}
+$('#hitUndo').addEventListener('click', () => {
+  if (!hitUndo) return;
+  const coll = store.get('coll', {}), e = coll[hitUndo.key];
+  if (e){ e.qty--; if (e.qty <= 0) delete coll[hitUndo.key]; store.set('coll', coll); histAdd(collTotals(Object.values(coll)).now); }
+  batchN = Math.max(0, batchN - 1); batchSum = Math.max(0, batchSum - hitUndo.sek); hitUndo = null;
+  $('#hit').hidden = true; toast('Borttagen från samlingen');
+});
+$('#hitShow').addEventListener('click', () => { if (stream) $('#startCam').click(); showTab('coll'); });
+
 /* ---------- Automatisk avläsning med vägledning ---------- */
 function chip(t, warn){ const c = $('#autoChip'); c.hidden = false; c.textContent = t; c.classList.toggle('warn', !!warn); }
 /* Medelljus (0–255) i en liten version av bilden */
@@ -1332,7 +1378,7 @@ function cardExtent(){
   const fy = span(rows, bh), fx = span(cols, bw); return fy && fx ? { fx, fy } : null;
 }
 function startAuto(){
-  autoOn = true; lastKey = ''; fails = 0; chip('Håll kortet inom ramen');
+  autoOn = true; lastKey = ''; fails = 0; batchN = 0; batchSum = 0; blockKey = ''; $('#hit').hidden = true; chip('Håll kortet inom ramen');
   const tick = async () => {
     if (!autoOn) return;
     if (!autoBusy && video.readyState >= 2){
@@ -1349,13 +1395,20 @@ function startAuto(){
           let ranked = rankCandidates(r), art = [];
           if (!strong(ranked)){ art = await artMatch(up).catch(() => []); if (!autoOn) return; ranked = withArt(rankCandidates(r), art); }
           const key = ranked[0] ? ranked[0].card.id : '';
-          if (key && (strong(ranked) || (confident(ranked) && key === lastKey))){
+          const found = key && (strong(ranked) || (confident(ranked) && key === lastKey));
+          if (blockKey && key !== blockKey && Date.now() > blockUntil) blockKey = '';   // kortet togs bort eller byttes: redo för nästa
+          if (found && $('#autoAdd').checked){
+            lastKey = key;
+            if (key === blockKey || Date.now() < blockUntil){ chip('Tillagd! Visa nästa kort'); }
+            else { blockKey = key; blockUntil = Date.now() + 1800; await batchAdd(ranked[0].card); blockUntil = Date.now() + 1800; }
+            fails = 0;
+          } else if (found){
             autoOn = false; navigator.vibrate?.(60);
             shot.classList.remove('fit'); shot.src = fr.toDataURL('image/jpeg', .9);
             fillFields(r); stopCamera(); video.hidden = true; frame.hidden = true; shot.hidden = false;
             await finish(r, ranked);
             return;
-          }
+          } else {
           lastKey = key; fails++;
           // Ingen träff trots skarp bild: hjälp med avståndet
           if (fails >= 2){
@@ -1363,6 +1416,7 @@ function startAuto(){
             if (ext && (ext.fy > .98 || ext.fx > .98)) chip('Backa lite – håll hela kortet inom ramen', true);
             else if (ext && ext.fy < .6) chip('Gå närmare – fyll de gula hörnen med kortet', true);
             else chip('Håll kortet still och rakt inom ramen', true);
+          }
           }
         }
       } catch (e){  } finally { autoBusy = false; }
