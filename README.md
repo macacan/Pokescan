@@ -8,12 +8,11 @@ Gå till **Releases** till höger och ladda ner `PokeScan.apk`. Öppna filen på
 
 Varje gång något ändras i `main` bygger GitHub Actions en ny APK automatiskt.
 
-## Webbversion
+## Webbversion (valfritt)
 
-Publiceras via GitHub Pages. Öppna adressen i mobilens webbläsare för att använda kameran utan att installera något.
+Filerna i `www/` kan läggas på valfri https-sida (t.ex. Netlify Drop) om du vill använda appen i webbläsaren.
 
 ## Struktur
 
 - `www/` – själva appen (HTML, ikoner, manifest)
 - `.github/workflows/build-apk.yml` – bygger APK med Capacitor
-- `.github/workflows/pages.yml` – publicerar webbversionen
