@@ -150,6 +150,9 @@ input::placeholder{color:var(--ink-3);font-weight:400}
 @keyframes corner{50%{opacity:.55}}
 .frame.busy::after{content:"";position:absolute;left:4px;right:4px;height:4px;border-radius:2px;background:linear-gradient(90deg,transparent,var(--yellow),#fff,var(--yellow),transparent);box-shadow:0 0 18px var(--yellow);animation:sweep 1.3s ease-in-out infinite}
 @keyframes sweep{0%{top:3%}50%{top:95%}100%{top:3%}}
+.auto-chip{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:4;width:max-content;max-width:calc(100% - 28px);text-align:center;
+  background:rgba(6,10,30,.78);color:#fff;font-weight:800;font-size:.86rem;padding:8px 14px;border-radius:999px;border:1px solid rgba(255,203,5,.55);transition:background .25s,border-color .25s}
+.auto-chip.warn{background:rgba(120,50,0,.85);border-color:var(--yellow)}
 .torch{position:absolute;top:12px;right:12px;z-index:4;height:44px;padding:0 14px 0 12px;gap:6px;font:800 .8rem var(--body,inherit);border-radius:999px;border:2px solid rgba(255,255,255,.4);background:rgba(6,10,30,.6);color:#fff;display:flex;align-items:center;cursor:pointer}
 .torch svg{width:20px;height:20px}
 .torch.on{background:var(--yellow);color:#161d3f;border-color:var(--yellow);box-shadow:0 0 18px var(--yellow)}
@@ -252,6 +255,23 @@ dialog.sheet::backdrop{background:rgba(6,10,30,.62);backdrop-filter:blur(4px);-w
 .meta{color:var(--ink-2);font-size:.9rem;margin:6px 0 0}
 .badge{display:inline-block;font-size:.72rem;font-weight:800;letter-spacing:.05em;background:linear-gradient(180deg,#ffe066,var(--yellow));color:#161d3f;border-radius:999px;padding:4px 11px;white-space:nowrap;box-shadow:0 2px 0 var(--yellow-lo)}
 .price{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:20px 0 4px}
+.coll-view{display:flex;width:100%;margin:0 0 16px}
+.coll-view button{flex:1}
+.dex-head{display:flex;justify-content:space-between;align-items:baseline;font-weight:700;font-size:1.05rem}
+.dex-head b{font:400 1.9rem var(--display)}
+.dex-pct{color:var(--accent);font-weight:800}
+.dex-bar{height:8px;border-radius:99px;background:var(--surface-2);border:1px solid var(--line);overflow:hidden;margin:8px 0 14px}
+.dex-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--fire),var(--yellow));border-radius:99px;transition:width .6s cubic-bezier(.2,1,.3,1)}
+.dex-f{margin:0 0 14px}
+.dex-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:10px}
+.dx{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px 10px;border-radius:16px;background:var(--surface-2);border:2px solid var(--line);text-align:center;min-width:0;content-visibility:auto;contain-intrinsic-size:110px 120px}
+.dx small{font-size:.66rem;font-weight:800;color:var(--ink-3);letter-spacing:.04em}
+.dx img{width:72px;height:72px;object-fit:contain;image-rendering:pixelated;filter:brightness(0) opacity(.55)}
+.dx span{font-size:.72rem;font-weight:800;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-3)}
+.dx.on{background:var(--surface-solid);border-color:color-mix(in srgb,var(--yellow) 70%,transparent)}
+.dx.on img{filter:none}
+.dx.on span{color:var(--ink)}
+.dx b{position:absolute;top:6px;right:6px;font-size:.62rem;background:var(--yellow);color:#161d3f;border-radius:99px;padding:1px 6px}
 .field.cond{margin-top:12px;max-width:260px}
 .seg{display:inline-flex;gap:4px;padding:4px;margin:12px 0 0;background:var(--surface-2);border:2px solid var(--line);border-radius:999px}
 .seg button{border:0;background:transparent;color:var(--ink-2);font:800 .85rem var(--body,inherit);padding:7px 18px;border-radius:999px;cursor:pointer;min-height:36px}
@@ -338,6 +358,7 @@ dialog a{color:var(--accent);font-weight:700}
             <div class="fx-msg" id="fxMsg"></div>
             <div class="fx-sub"><span id="fxSub">Läser av kortet</span><span class="fx-dots"></span></div>
           </div>
+          <div class="auto-chip" id="autoChip" hidden>Håll kortet inom ramen</div>
           <button class="torch" id="torch" type="button" aria-label="Ficklampa" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg><span>Blixt</span></button>
           <div class="vf-hint" id="vfHint">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><rect x="8" y="7" width="8" height="10" rx="1"/></svg>
@@ -392,12 +413,22 @@ dialog a{color:var(--accent);font-weight:700}
 
   <!-- SAMLING -->
   <section id="tab-coll" class="card" hidden>
+    <div class="seg coll-view" id="collView" role="group" aria-label="Visa"><button type="button" data-v="cards" aria-pressed="true">Kort</button><button type="button" data-v="dex" aria-pressed="false">Pokédex</button></div>
+    <div id="collCards">
     <div class="tot">
       <div><div class="eyebrow">Totalt värde</div><div class="v" id="collTotal">0 kr</div><div class="meta" id="collCount"></div></div>
       <button class="btn quiet" id="exportCsv">Exportera CSV</button>
     </div>
     <div class="grid" id="collGrid"></div>
     <div class="empty" id="collEmpty">Samlingen är tom. Slå upp ett kort och välj “Lägg i samling”.</div>
+    </div>
+    <div id="dexView" hidden>
+      <div class="dex-head"><span><b id="dexCount">0</b> / <span id="dexTotal">1025</span> fångade</span><span class="dex-pct" id="dexPct">0 %</span></div>
+      <div class="dex-bar"><i id="dexFill"></i></div>
+      <div class="seg dex-f" id="dexF" role="group" aria-label="Filter"><button type="button" data-f="all" aria-pressed="true">Alla</button><button type="button" data-f="got" aria-pressed="false">Fångade</button><button type="button" data-f="miss" aria-pressed="false">Saknas</button></div>
+      <div class="dex-grid" id="dexGrid"></div>
+      <p class="status" id="dexStatus"></p>
+    </div>
   </section>
 </main>
 <p class="foot">Kortdata och priser från TCGdex. Priser är Cardmarket (EUR) omräknade till SEK och gäller ungefär Near Mint. Andra skick är uppskattade avdrag. Se dem som en riktpunkt.</p>
@@ -490,7 +521,7 @@ const brief = b => ({ id: b.id, name: b.name, number: b.localId, img: b.image ? 
 function norm(d){
   return { id: d.id, name: d.name, number: d.localId, rarity: d.rarity, artist: d.illustrator, setName: d.set?.name,
     total: d.set?.cardCount?.official, img: d.image ? d.image + '/low.webp' : '', imgL: d.image ? d.image + '/high.webp' : '',
-    variants: d.variants || {}, cm: d.pricing?.cardmarket || null, tp: d.pricing?.tcgplayer || null, detailed: true };
+    dex: d.dexId || [], variants: d.variants || {}, cm: d.pricing?.cardmarket || null, tp: d.pricing?.tcgplayer || null, detailed: true };
 }
 async function findBrief({ name, number, setId }){
   let l;
@@ -550,7 +581,7 @@ function showTab(t){
   ['scan','search','coll'].forEach(x => $('#tab-'+x).hidden = x !== t);
   const browse = t !== 'coll';
   $('#results').hidden = !browse || !list.length;
-  if (t === 'coll') renderColl();
+  if (t === 'coll'){ renderColl(); if (!$('#dexView').hidden) renderDex(); }
 }
 
 /* ---------- Sökresultat ---------- */
@@ -790,7 +821,7 @@ function drawChart(host, s){
 /* ---------- Samling ---------- */
 function addToColl(c){
   const coll = store.get('coll', {}), p = prices(c), key = c.id + (p.holo ? '#holo' : '') + (p.cond !== 'NM' ? '#' + p.cond : ''), e = coll[key] || { qty: 0 };
-  coll[key] = { id: c.id, key, holo: p.holo, cond: p.cond, qty: e.qty + 1, name: c.name, set: c.setName, number: c.number, total: c.total, img: c.img, sek: p.main };
+  coll[key] = { id: c.id, dex: c.dex || [], key, holo: p.holo, cond: p.cond, qty: e.qty + 1, name: c.name, set: c.setName, number: c.number, total: c.total, img: c.img, sek: p.main };
   store.set('coll', coll);
 }
 function renderColl(){
@@ -976,8 +1007,10 @@ async function showCandidates(ranked, total){
 /* ---------- Kamera ---------- */
 let lastCanvas = null;
 let stream = null, track = null, torchOn = false, torchOK = true;
+let autoOn = false, autoBusy = false, autoTimer = null, lastKey = '', fails = 0;
 const video = $('#video'), shot = $('#shot'), frame = $('#frame');
 function stopCamera(){
+  autoOn = false; clearTimeout(autoTimer); $('#autoChip').hidden = true;
   stream?.getTracks().forEach(t => t.stop()); stream = null; track = null;
   $('#torch').hidden = true; $('#snap').disabled = true;
   $('#startCam').textContent = 'Kamera';
@@ -997,6 +1030,7 @@ $('#startCam').addEventListener('click', async () => {
     $('#startCam').textContent = 'Stäng';
     loadIndex(); loadArt();
     st.textContent = '';
+    startAuto();
   } catch {
     st.textContent = 'Kameran startade inte. Tillåt kameraåtkomst, eller ladda upp ett foto från galleriet.'; st.classList.add('err');
   }
@@ -1017,7 +1051,76 @@ function grabFrame(){
   c.getContext('2d').drawImage(video, ox + (visW - cw) / 2, oy + (visH - ch) / 2, cw, ch, 0, 0, c.width, c.height);
   return c;
 }
+/* ---------- Automatisk avläsning med vägledning ---------- */
+function chip(t, warn){ const c = $('#autoChip'); c.hidden = false; c.textContent = t; c.classList.toggle('warn', !!warn); }
+/* Medelljus (0–255) i en liten version av bilden */
+function brightness(c){
+  const t = document.createElement('canvas'); t.width = 32; t.height = Math.max(1, Math.round(c.height * 32 / c.width));
+  const g = t.getContext('2d', { willReadFrequently: true }); g.drawImage(c, 0, 0, t.width, t.height);
+  const p = g.getImageData(0, 0, t.width, t.height).data; let s = 0;
+  for (let i = 0; i < p.length; i += 4) s += p[i] * .299 + p[i+1] * .587 + p[i+2] * .114;
+  return s / (p.length / 4);
+}
+/* Hur stor del av kameravyn täcks av kortet? Kantanalys av hela bilden, bara som grov vägledning. */
+function cardExtent(){
+  const vw = video.videoWidth, vh = video.videoHeight; if (!vw) return null;
+  const w = 160, h = Math.round(vh * w / vw), t = document.createElement('canvas'); t.width = w; t.height = h;
+  const g = t.getContext('2d', { willReadFrequently: true }); g.drawImage(video, 0, 0, w, h);
+  const p = g.getImageData(0, 0, w, h).data, gr = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) gr[i] = p[i*4] * .299 + p[i*4+1] * .587 + p[i*4+2] * .114;
+  const B = 8, bw = Math.floor(w / B), bh = Math.floor(h / B), d = new Float32Array(bw * bh); let mean = 0;
+  for (let by = 0; by < bh; by++) for (let bx = 0; bx < bw; bx++){ let e = 0;
+    for (let y = 1; y < B - 1; y++) for (let x = 1; x < B - 1; x++){ const i = (by * B + y) * w + bx * B + x; e += Math.abs(gr[i+1] - gr[i-1]) + Math.abs(gr[i+w] - gr[i-w]); }
+    d[by * bw + bx] = e / 36; mean += d[by * bw + bx]; }
+  mean /= d.length; const thr = Math.max(mean * 1.1, 6), rows = new Array(bh).fill(0), cols = new Array(bw).fill(0);
+  for (let by = 0; by < bh; by++) for (let bx = 0; bx < bw; bx++) if (d[by * bw + bx] > thr){ rows[by]++; cols[bx]++; }
+  const span = (a, n) => { const m = Math.max(...a); if (m < 2) return null; const tt = Math.max(2, m * .3); let lo = 0, hi = n - 1; while (lo < n && a[lo] < tt) lo++; while (hi > lo && a[hi] < tt) hi--; return hi > lo ? (hi + 1 - lo) / n : null; };
+  const fy = span(rows, bh), fx = span(cols, bw); return fy && fx ? { fx, fy } : null;
+}
+function startAuto(){
+  autoOn = true; lastKey = ''; fails = 0; chip('Håll kortet inom ramen');
+  const tick = async () => {
+    if (!autoOn) return;
+    if (!autoBusy && video.readyState >= 2){
+      autoBusy = true;
+      try {
+        const fr = grabFrame(), sharp = sharpness(fr), lum = brightness(fr);
+        if (lum < 45){ chip('För mörkt – tänd blixten eller gå till bättre ljus', true); }
+        else if (sharp < 40){ chip('Håll still – bilden är suddig', true); }
+        else if (!IDX.cards){ chip('Laddar kortdatabasen …'); }
+        else {
+          chip(lum > 225 ? 'Mycket ljust – undvik reflexer, luta kortet lite' : 'Läser av …', lum > 225);
+          const up = upscale(fr, 1300);
+          const r = await readCard(up, true); if (!autoOn) return;
+          let ranked = rankCandidates(r), art = [];
+          if (!strong(ranked)){ art = await artMatch(up).catch(() => []); if (!autoOn) return; ranked = withArt(rankCandidates(r), art); }
+          const key = ranked[0] ? ranked[0].card.id : '';
+          if (key && (strong(ranked) || (confident(ranked) && key === lastKey))){
+            autoOn = false; navigator.vibrate?.(60);
+            shot.classList.remove('fit'); shot.src = fr.toDataURL('image/jpeg', .9);
+            fillFields(r); stopCamera(); video.hidden = true; frame.hidden = true; shot.hidden = false;
+            await finish(r, ranked);
+            return;
+          }
+          lastKey = key; fails++;
+          // Ingen träff trots skarp bild: hjälp med avståndet
+          if (fails >= 2){
+            const ext = cardExtent();
+            if (ext && (ext.fy > .98 || ext.fx > .98)) chip('Backa lite – håll hela kortet inom ramen', true);
+            else if (ext && ext.fy < .6) chip('Gå närmare – fyll de gula hörnen med kortet', true);
+            else chip('Håll kortet still och rakt inom ramen', true);
+          }
+        }
+      } catch (e){  } finally { autoBusy = false; }
+    }
+    if (autoOn) autoTimer = setTimeout(tick, 300);
+  };
+  tick();
+}
 $('#snap').addEventListener('click', async () => {
+  // vänta tills en pågående automatisk avläsning är klar (textläsarna delas)
+  autoOn = false; clearTimeout(autoTimer); $('#autoChip').hidden = true;
+  while (autoBusy) await new Promise(r => setTimeout(r, 50));
   // Flera bilder efter varandra, den skarpaste används
   let c = grabFrame(), best = sharpness(c);
   for (let i = 0; i < 5; i++){ await new Promise(r => setTimeout(r, 80)); const f = grabFrame(), v = sharpness(f); if (v > best){ best = v; c = f; } }
@@ -1437,6 +1540,52 @@ async function lookup(){
     st.textContent = 'Kunde inte nå TCGdex just nu. Försök igen om en stund.'; st.classList.add('err');
   }
 }
+
+/* ---------- Pokédex: alla Pokémon, silhuett tills du har ett kort ---------- */
+let DEX = null, dexF = 'all';
+const SPRITE = id => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`;
+async function loadDex(){
+  if (DEX) return DEX;
+  try {
+    const l = await (await fetch('dex.json')).json();
+    DEX = l.map(([id, name, gen]) => ({ id, name, gen, key: normName(name) }));
+    DEX.byLen = [...DEX].sort((a, b) => b.key.length - a.key.length);
+  } catch { DEX = []; DEX.byLen = []; }
+  return DEX;
+}
+/* Vilka Pokémon finns i samlingen? dex-id från kortet, annars namnet (t.ex. "Dark Charizard" -> Charizard) */
+function caughtMap(){
+  const m = new Map();
+  for (const x of Object.values(store.get('coll', {}))){
+    let ids = Array.isArray(x.dex) ? x.dex.slice() : [];
+    if (!ids.length && DEX){
+      const k = ' ' + normName(x.name) + ' ';
+      const hit = DEX.byLen.find(d => k.includes(' ' + d.key + ' '));
+      if (hit) ids = [hit.id];
+    }
+    ids.forEach(id => m.set(id, (m.get(id) || 0) + (x.qty || 1)));
+  }
+  return m;
+}
+async function renderDex(){
+  await loadDex();
+  const st = $('#dexStatus'), g = $('#dexGrid');
+  if (!DEX.length){ st.textContent = 'Kunde inte läsa Pokémon-listan.'; return; } st.textContent = '';
+  const got = caughtMap(), n = DEX.filter(d => got.has(d.id)).length;
+  $('#dexCount').textContent = n; $('#dexTotal').textContent = DEX.length;
+  const pct = n / DEX.length * 100; $('#dexPct').textContent = (pct < 10 && n ? nf2.format(pct) : nf0.format(Math.round(pct))) + ' %'; $('#dexFill').style.width = Math.max(n ? 1.5 : 0, pct) + '%';
+  const arr = DEX.filter(d => dexF === 'all' || (dexF === 'got') === got.has(d.id));
+  g.innerHTML = arr.map(d => { const c = got.get(d.id);
+    return `<div class="dx${c ? ' on' : ''}"><small>#${String(d.id).padStart(4, '0')}</small><img loading="lazy" alt="" src="${SPRITE(d.id)}" onerror="this.style.visibility='hidden'"><span>${c ? esc(d.name) : '? ? ?'}</span>${c > 1 ? `<b>×${c}</b>` : ''}</div>`; }).join('')
+    || `<p class="status" style="grid-column:1/-1">${dexF === 'got' ? 'Inga fångade Pokémon än. Lägg kort i samlingen.' : 'Du har alla Pokémon!'}</p>`;
+}
+document.querySelectorAll('#collView button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('#collView button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  const dx = b.dataset.v === 'dex'; $('#collCards').hidden = dx; $('#dexView').hidden = !dx; if (dx) renderDex();
+}));
+document.querySelectorAll('#dexF button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('#dexF button').forEach(x => x.setAttribute('aria-pressed', x === b)); dexF = b.dataset.f; renderDex();
+}));
 
 /* ---------- Inställningar ---------- */
 const dlg = $('#settings');
