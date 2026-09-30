@@ -198,6 +198,25 @@ input::placeholder{color:var(--ink-3);font-weight:400}
 @keyframes roll{to{transform:rotate(360deg)}}
 
 /* ---------- Detaljvy ---------- */
+dialog.sheet{padding:0;border:0;margin:auto auto 0;width:min(820px,100%);max-width:100%;max-height:92vh;max-height:92dvh;border-radius:26px 26px 0 0;
+  background:var(--surface-solid);color:var(--ink);overflow-y:auto;overscroll-behavior:contain;box-shadow:0 -12px 50px rgba(0,0,0,.35)}
+dialog.sheet[open]{animation:sheetUp .42s cubic-bezier(.2,1,.3,1)}
+dialog.sheet.closing{animation:sheetDown .25s ease-in forwards}
+@keyframes sheetUp{from{transform:translateY(100%)}}
+@keyframes sheetDown{to{transform:translateY(100%)}}
+dialog.sheet::backdrop{background:rgba(6,10,30,.62);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+@media (min-width:860px){dialog.sheet{margin:auto;border-radius:26px;max-height:88vh}dialog.sheet[open]{animation:rise .35s cubic-bezier(.2,1.3,.4,1)}}
+.sheet-top{position:sticky;top:0;z-index:5;display:flex;justify-content:center;align-items:center;height:34px;background:linear-gradient(var(--surface-solid) 60%,transparent);touch-action:none}
+.sheet-grip{width:46px;height:5px;border-radius:3px;background:var(--ink-3);opacity:.45}
+.sheet-close{position:absolute;right:12px;top:8px;width:38px;height:38px;border-radius:50%;border:2px solid var(--line);background:var(--surface-2);color:var(--ink);display:grid;place-items:center;cursor:pointer}
+.sheet-close svg{width:18px;height:18px}
+#detail{padding:6px 20px calc(26px + env(safe-area-inset-bottom,0px))}
+.ac{position:relative}
+.suggest{position:absolute;left:0;min-width:100%;width:max-content;max-width:min(360px,calc(100vw - 48px));top:100%;margin:6px 0 0;z-index:30;list-style:none;padding:6px;border-radius:14px;background:var(--surface-solid);border:2px solid var(--line);box-shadow:var(--shadow);max-height:300px;overflow-y:auto;animation:pop .2s both;text-transform:none;letter-spacing:0}
+.suggest li{display:flex;justify-content:space-between;gap:14px;align-items:center;padding:10px 12px;border-radius:10px;cursor:pointer;font-weight:700;font-size:.95rem;color:var(--ink)}
+.suggest li small{font-weight:600;color:var(--ink-3);font-size:.75rem;white-space:nowrap}
+.suggest li mark{background:color-mix(in srgb,var(--yellow) 55%,transparent);color:inherit;border-radius:3px}
+.suggest li[aria-selected="true"],.suggest li:hover{background:var(--surface-2)}
 .detail{display:grid;grid-template-columns:minmax(0,310px) minmax(0,1fr);gap:28px}
 @media (max-width:720px){.detail{grid-template-columns:1fr}.detail .art{max-width:280px;margin:0 auto;width:100%}}
 .art{perspective:900px}
@@ -312,10 +331,11 @@ dialog a{color:var(--accent);font-weight:700}
           <li><b>3</b><span><strong>Kontrollera träffen</strong> och se värdet i kronor. Du kan också välja ett foto från galleriet.</span></li>
         </ol>
         <div class="row" id="ocrFields" hidden style="margin-top:18px">
-          <label class="field"><span>Namn</span><input id="ocrName" autocomplete="off"></label>
+          <label class="field ac"><span>Namn</span><input id="ocrName" autocomplete="off" placeholder="Skriv kortnamn"></label>
           <label class="field" style="flex:0 0 96px"><span>Nummer</span><input id="ocrNum" inputmode="numeric"></label>
           <label class="field" style="flex:0 0 96px"><span>Av totalt</span><input id="ocrTot" inputmode="numeric"></label>
-          <button class="btn" id="ocrGo">Sök igen</button>
+          <button class="btn" id="ocrGo">Sök</button>
+          <button class="btn quiet" id="reScan" type="button" hidden>Läs bilden igen</button>
         </div>
         <p class="status" id="scanStatus" role="status"></p>
       </div>
@@ -325,7 +345,7 @@ dialog a{color:var(--accent);font-weight:700}
   <!-- SÖK -->
   <section id="tab-search" class="card" hidden>
     <form class="row" id="searchForm">
-      <label class="field"><span>Kortnamn</span><input id="qName" placeholder="t.ex. Charizard" autocomplete="off"></label>
+      <label class="field ac"><span>Kortnamn</span><input id="qName" placeholder="t.ex. Charizard" autocomplete="off"></label>
       <label class="field"><span>Set</span><select id="qSet"><option value="">Alla set</option></select></label>
       <label class="field" style="flex:0 0 100px"><span>Nummer</span><input id="qNum" inputmode="numeric"></label>
       <button class="btn" type="submit">Sök</button>
@@ -343,7 +363,11 @@ dialog a{color:var(--accent);font-weight:700}
     <div class="grid" id="grid"></div>
     <div class="row" style="justify-content:center;margin-top:14px"><button class="btn quiet" id="more" hidden>Visa fler</button></div>
   </section>
-  <section id="detail" class="card" hidden style="margin-top:16px"></section>
+  <dialog id="sheet" class="sheet" aria-label="Kortinformation">
+    <div class="sheet-top"><span class="sheet-grip" aria-hidden="true"></span><button class="sheet-close" id="sheetClose" type="button" aria-label="Stäng">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div id="detail"></div>
+  </dialog>
 
   <!-- SAMLING -->
   <section id="tab-coll" class="card" hidden>
@@ -475,7 +499,6 @@ function showTab(t){
   ['scan','search','coll'].forEach(x => $('#tab-'+x).hidden = x !== t);
   const browse = t !== 'coll';
   $('#results').hidden = !browse || !list.length;
-  $('#detail').hidden = !browse || $('#detail').dataset.open !== '1';
   if (t === 'coll') renderColl();
 }
 
@@ -483,7 +506,7 @@ function showTab(t){
 let list = [], shown = 0, gen = 0;
 const tileEls = {};
 function skeleton(){
-  $('#results').hidden = false; $('#detail').hidden = true; $('#detail').dataset.open = '0';
+  $('#results').hidden = false; closeSheet();
   $('#resCount').innerHTML = '<span class="loader"></span>Söker …'; $('#more').hidden = true;
   $('#grid').innerHTML = '<div class="skel"></div>'.repeat(6);
 }
@@ -590,13 +613,83 @@ async function showDetail(c){
         <a class="btn quiet" href="${esc(link)}" target="_blank" rel="noopener">Sök på Cardmarket</a>
       </div>
     </div></div>`;
-  d.hidden = false; d.dataset.open = '1';
-  d.style.animation = 'none'; void d.offsetWidth; d.style.animation = '';
+  openSheet();
   tilt($('#holo'));
   if (p.main != null) countUp(d.querySelector('.price .v'), p.main);
   if (s.length >= 2) drawChart($('#chart'), s);
   $('#addColl').addEventListener('click', e => { addToColl(c); burst(e.target); e.target.textContent = 'Tillagd i samlingen'; e.target.disabled = true; });
-  d.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* ---------- Pop-up för kortinfo ---------- */
+const sheet = $('#sheet');
+function openSheet(){
+  sheet.classList.remove('closing'); sheet.style.transform = '';
+  if (!sheet.open){ sheet.showModal(); try { history.pushState({ sheet: 1 }, ''); } catch {} }
+  sheet.scrollTop = 0;
+}
+function closeSheet(){
+  if (!sheet.open) return;
+  sheet.classList.add('closing');
+  setTimeout(() => { sheet.classList.remove('closing'); sheet.style.transform = ''; if (sheet.open) sheet.close(); }, 230);
+}
+sheet.addEventListener('close', () => { if (history.state && history.state.sheet) { try { history.back(); } catch {} } });
+window.addEventListener('popstate', () => { if (sheet.open) closeSheet(); });
+$('#sheetClose').addEventListener('click', closeSheet);
+sheet.addEventListener('click', e => { if (e.target === sheet) closeSheet(); });
+sheet.addEventListener('cancel', e => { e.preventDefault(); closeSheet(); });
+// Dra nedåt för att stänga
+(() => {
+  let y0 = null, dy = 0;
+  sheet.addEventListener('touchstart', e => { if (sheet.scrollTop <= 0 && !e.target.closest('.holo,.chart')){ y0 = e.touches[0].clientY; dy = 0; } }, { passive: true });
+  sheet.addEventListener('touchmove', e => { if (y0 == null) return; dy = Math.max(0, e.touches[0].clientY - y0); if (dy > 0) sheet.style.transform = `translateY(${dy}px)`; }, { passive: true });
+  sheet.addEventListener('touchend', () => { if (y0 == null) return; if (dy > 110) closeSheet(); else sheet.style.transform = ''; y0 = null; });
+})();
+
+/* ---------- Namnförslag medan man skriver ---------- */
+let NAMES = null;
+function names(){
+  if (!IDX.cards) return [];
+  if (NAMES && NAMES.lang === LANG && NAMES.n === IDX.cards.length) return NAMES.list;
+  const m = new Map();
+  for (const c of IDX.cards){ const e = m.get(c.key); if (e) e.count++; else m.set(c.key, { name: c.name, key: c.key, count: 1 }); }
+  NAMES = { lang: LANG, n: IDX.cards.length, list: [...m.values()] };
+  return NAMES.list;
+}
+function suggestFor(q){
+  const n = normName(q); if (n.length < 2) return [];
+  const all = names(), pre = [], inc = [];
+  for (const x of all){ if (x.key.startsWith(n)) pre.push(x); else if (x.key.includes(n)) inc.push(x); }
+  const by = (a, b) => a.key.length - b.key.length || b.count - a.count;
+  let out = [...pre.sort(by), ...inc.sort(by)];
+  if (out.length < 4 && n.length >= 4){
+    const fz = all.filter(x => !out.includes(x)).map(x => ({ x, s: nameSim(n, x.key) })).filter(o => o.s >= .7).sort((a, b) => b.s - a.s).map(o => o.x);
+    out = out.concat(fz);
+  }
+  return out.slice(0, 8);
+}
+function attachSuggest(input, onPick){
+  const box = document.createElement('ul'); box.className = 'suggest'; box.hidden = true; box.setAttribute('role', 'listbox');
+  input.parentElement.appendChild(box); input.setAttribute('aria-autocomplete', 'list');
+  let items = [], sel = -1;
+  const hi = (name, q) => { const i = name.toLowerCase().indexOf(q.toLowerCase()); return i < 0 || !q ? esc(name) : esc(name.slice(0, i)) + '<mark>' + esc(name.slice(i, i + q.length)) + '</mark>' + esc(name.slice(i + q.length)); };
+  const render = () => {
+    const q = input.value.trim(); items = suggestFor(q); sel = -1;
+    if (!items.length || document.activeElement !== input){ box.hidden = true; return; }
+    box.innerHTML = items.map((x, i) => `<li role="option" data-i="${i}"><span>${hi(x.name, q)}</span><small>${x.count} ${x.count === 1 ? 'version' : 'versioner'}</small></li>`).join('');
+    box.hidden = false;
+  };
+  const pick = i => { const x = items[i]; if (!x) return; input.value = x.name; box.hidden = true; input.blur(); onPick(x); };
+  input.addEventListener('focus', () => { loadIndex().then(render); });
+  input.addEventListener('input', () => { if (IDX.cards) render(); else loadIndex().then(render); });
+  input.addEventListener('keydown', e => {
+    if (box.hidden) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp'){ e.preventDefault(); sel = (sel + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+      box.querySelectorAll('li').forEach((li, i) => li.setAttribute('aria-selected', i === sel)); }
+    else if (e.key === 'Enter' && sel >= 0){ e.preventDefault(); pick(sel); }
+    else if (e.key === 'Escape'){ box.hidden = true; }
+  });
+  box.addEventListener('pointerdown', e => { const li = e.target.closest('li'); if (li){ e.preventDefault(); pick(+li.dataset.i); } });
+  input.addEventListener('blur', () => setTimeout(() => { box.hidden = true; }, 150));
 }
 
 /* ---------- Prisutveckling ---------- */
@@ -776,6 +869,7 @@ async function showCandidates(ranked, total){
 }
 
 /* ---------- Kamera ---------- */
+let lastCanvas = null;
 let stream = null, track = null, autoOn = false, autoBusy = false, autoTimer = null, lastKey = '', torchOn = false;
 const video = $('#video'), shot = $('#shot'), frame = $('#frame');
 function stopCamera(){
@@ -864,8 +958,10 @@ $('#file').addEventListener('change', e => {
     const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
     c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
     shot.src = img.src; shot.hidden = false; video.hidden = true; frame.hidden = true; $('#vfHint').hidden = true;
+    lastCanvas = c; $('#reScan').hidden = false; $('#ocrFields').hidden = false;
     runOcr(c, true);
   };
+  img.onerror = () => { const st = $('#scanStatus'); st.className = 'status err'; st.textContent = 'Bilden kunde inte öppnas. Prova ett annat foto (JPG eller PNG).'; };
   img.src = URL.createObjectURL(f);
   e.target.value = '';
 });
@@ -987,7 +1083,7 @@ async function runOcr(canvas, uploaded){
   const st = $('#scanStatus'); st.className = 'status'; st.textContent = 'Läser av kortet …';
   frame.classList.add('busy'); $('#ocrFields').hidden = false;
   try {
-    await loadIndex();
+    await Promise.race([loadIndex(), new Promise(r => setTimeout(r, 15000))]);
     // Uppladdat foto: kortet kan ligga var som helst i bilden, så läs hela bilden först.
     let r = uploaded ? await readWhole(canvas) : await readCard(canvas, false);
     let ranked = rankCandidates(r);
@@ -1020,6 +1116,10 @@ async function finish(r, ranked){
   }
   await lookup();
 }
+$('#reScan').addEventListener('click', () => { if (lastCanvas) runOcr(lastCanvas, true); });
+attachSuggest($('#ocrName'), () => $('#ocrGo').click());
+attachSuggest($('#qName'), () => $('#searchForm').requestSubmit());
+$('#ocrName').addEventListener('keydown', e => { if (e.key === 'Enter' && $('#ocrName').parentElement.querySelector('.suggest').hidden){ e.preventDefault(); $('#ocrGo').click(); } });
 $('#ocrGo').addEventListener('click', async () => {
   const r = { name: $('#ocrName').value.trim(), number: $('#ocrNum').value.trim(), total: $('#ocrTot').value.trim() };
   await loadIndex();
