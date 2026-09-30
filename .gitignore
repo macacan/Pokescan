@@ -1,3 +1,9 @@
 node_modules/
 android/
 *.apk
+
+# Signeringsnycklar ska aldrig in i repot
+*.jks
+*.keystore
+keystore*
+HEMLIGHETER*

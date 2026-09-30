@@ -16,6 +16,21 @@ Filerna i `www/` kan läggas på valfri https-sida (t.ex. Netlify Drop) om du vi
 
 Appen jämför kortets konstverk med ett index av bildfingeravtryck (`www/hashes.*`), så den hittar kortet även när fotot är suddigt. Indexet byggs av workflowet **Bygg kortindex** (Actions, kör för hand en gång, sedan varje månad) från gratis TCGdex-bilder och startar därefter APK-bygget. Utan indexet fungerar appen som förut med textläsning.
 
+## Offline och integritet
+
+Textläsaren (Tesseract), dess språkdata och typsnitten ligger i appen (`www/vendor`, `www/fonts`), så inget hämtas från CDN eller Google. Appen pratar bara med TCGdex (kortdata), Frankfurter (växelkurser), PokeAPI (Pokédex-info) och GitHub (Pokémon-bilder), och bara när de behövs.
+
+## Publicera på Google Play
+
+1. **Skapa en uppladdningsnyckel** (en gång): `keytool -genkeypair -keystore pokescan-upload.jks -storetype PKCS12 -alias pokescan -keyalg RSA -keysize 2048 -validity 10000`. Spara filen och lösenorden säkert. Den får aldrig checkas in.
+2. **Lägg in fyra hemligheter** under Settings > Secrets and variables > Actions:
+   `ANDROID_KEYSTORE_BASE64` (`base64 -w0 pokescan-upload.jks`), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
+3. **Kör workflowet** *Bygg för Google Play* (Actions > Run workflow). Det bygger en signerad AAB (`PokeScan.aab`) och en signerad APK, och lägger dem som en pre-release.
+4. **Ladda upp `PokeScan.aab`** i Play Console. Slå på Play App Signing när Google frågar (då är din nyckel bara uppladdningsnyckel och kan återställas).
+5. Fyll i integritetspolicy, dataskyddsformulär, innehållsbetyg och butikssida. Byt namn och ikon så de inte innehåller Pokémon-varumärken.
+
+Versionskoden (`versionCode`) är körningsnumret, så den ökar för varje bygge. Målversionen (target SDK) kommer från Capacitor 8 (Android 16 / API 36).
+
 ## Struktur
 
 - `www/` – själva appen (HTML, ikoner, manifest, `fingerprint.js`)

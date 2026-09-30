@@ -10,10 +10,13 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>PokéScan</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700;800&family=Lilita+One&display=swap" rel="stylesheet">
 <style>
+/* Typsnitt ligger i appen (inga anrop till Google) */
+@font-face{font-family:'Figtree';font-weight:400;font-display:swap;src:url(fonts/figtree-latin-400-normal.woff2) format('woff2')}
+@font-face{font-family:'Figtree';font-weight:600;font-display:swap;src:url(fonts/figtree-latin-600-normal.woff2) format('woff2')}
+@font-face{font-family:'Figtree';font-weight:700;font-display:swap;src:url(fonts/figtree-latin-700-normal.woff2) format('woff2')}
+@font-face{font-family:'Figtree';font-weight:800;font-display:swap;src:url(fonts/figtree-latin-800-normal.woff2) format('woff2')}
+@font-face{font-family:'Lilita One';font-weight:400;font-display:swap;src:url(fonts/lilita-one-latin-400-normal.woff2) format('woff2')}
 /* Layout: glossy Pokédex-red app bar over a living type-colour backdrop; one content column, two-column scanner and detail on desktop. */
 @property --a{syntax:'<angle>';inherits:false;initial-value:0deg}
 :root{
@@ -501,7 +504,7 @@ dialog a{color:var(--accent);font-weight:700}
   </div>
 </dialog>
 
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script src="vendor/tesseract.min.js"></script>
 <script src="fingerprint.js"></script>
 <script>
 (() => {
@@ -1410,12 +1413,18 @@ function withArt(ranked, art){
 }
 
 /* ---------- OCR ---------- */
+/* Textläsaren, dess motor och språkdata ligger i appen (fungerar offline, inga externa anrop) */
+const mkWorker = () => Tesseract.createWorker('eng', 1, {
+  workerPath: new URL('vendor/worker.min.js', location.href).href,
+  corePath: new URL('vendor/core', location.href).href,
+  langPath: new URL('vendor/lang', location.href).href
+});
 let worker = null, workerP = null;
 function getWorker(){
   if (worker) return Promise.resolve(worker);
   if (!workerP){
     if (!window.Tesseract) return Promise.reject(new Error('lib'));
-    workerP = Tesseract.createWorker('eng').then(w => (worker = w)).catch(e => { workerP = null; throw e; });
+    workerP = mkWorker().then(w => (worker = w)).catch(e => { workerP = null; throw e; });
   }
   return workerP;
 }
@@ -1424,7 +1433,7 @@ let worker2 = null, worker2P = null;
 function getWorker2(){
   if (worker2) return Promise.resolve(worker2);
   if (!window.Tesseract) return Promise.reject(new Error('lib'));
-  if (!worker2P) worker2P = Tesseract.createWorker('eng').then(w => (worker2 = w)).catch(() => { worker2P = null; return getWorker(); });
+  if (!worker2P) worker2P = mkWorker().then(w => (worker2 = w)).catch(() => { worker2P = null; return getWorker(); });
   return worker2P;
 }
 /* Beskär, förstora, gråskala, sträck ut kontrast och gör svartvit (Otsu). invert = ljus text på mörk botten. */

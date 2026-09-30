@@ -1,5 +1,5 @@
 // PokéScan service worker: appskalet sparas offline, kort- och prisdata hämtas alltid färskt.
-const CACHE = 'pokescan-v6';
+const CACHE = 'pokescan-v7';
 const SHELL = ['./', './index.html', './fingerprint.js', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', e => {
@@ -13,8 +13,8 @@ self.addEventListener('fetch', e => {
     // Nätverk först så uppdateringar syns direkt, cache som reserv offline.
     e.respondWith(fetch(e.request).then(r => { const c = r.clone(); caches.open(CACHE).then(x => x.put(e.request, c)); return r; })
       .catch(() => caches.match(e.request).then(r => r || caches.match('./index.html'))));
-  } else if (u.hostname === 'assets.tcgdex.net' || u.hostname.endsWith('jsdelivr.net') || u.hostname.endsWith('gstatic.com') || u.hostname.endsWith('googleapis.com')) {
-    // Kortbilder, typsnitt och OCR-bibliotek: cache först.
+  } else if (u.hostname === 'assets.tcgdex.net' || u.hostname === 'raw.githubusercontent.com') {
+    // Kortbilder och Pokémon-bilder: cache först.
     e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).then(res => { const c = res.clone(); caches.open(CACHE).then(x => x.put(e.request, c)); return res; })));
   }
 });

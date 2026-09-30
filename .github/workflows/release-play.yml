@@ -1,0 +1,109 @@
+name: Bygg för Google Play
+
+# Bygger en signerad AAB (det Google Play kräver) och en signerad APK.
+# Kräver fyra hemligheter under Settings > Secrets and variables > Actions:
+#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+# Kör för hand: Actions > Bygg för Google Play > Run workflow.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: play
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      VERSION_CODE: ${{ github.run_number }}
+    steps:
+      - name: Kontrollera att signeringsnyckeln finns
+        run: |
+          for v in KS_B64 KS_PASS KEY_ALIAS KEY_PASS; do
+            if [ -z "${!v}" ]; then echo "::error::Hemligheten för $v saknas. Se README (Publicera på Google Play)."; exit 1; fi
+          done
+
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Installera och skapa Android-projektet
+        run: |
+          npm install --no-audit --no-fund
+          npx cap add android
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+
+      - name: Kamerabehörighet, version och signering
+        run: |
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />#' $M
+          grep -q 'android.permission.CAMERA' $M
+          G=android/app/build.gradle
+          sed -i "s/versionCode 1/versionCode $VERSION_CODE/; s/versionName \"1.0\"/versionName \"1.0.$VERSION_CODE\"/" $G
+          grep -q "versionCode $VERSION_CODE" $G
+          echo "$KS_B64" | base64 -d > android/upload.jks
+          cat >> $G <<'GRADLE'
+
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file("$rootDir/upload.jks")
+                      storePassword System.getenv("KS_PASS")
+                      keyAlias System.getenv("KEY_ALIAS")
+                      keyPassword System.getenv("KEY_PASS")
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                  }
+              }
+          }
+          GRADLE
+
+      - name: Ikoner
+        run: npm run icons || echo "ikoner hoppades över"
+
+      - name: Bygg AAB och APK
+        run: |
+          npx cap sync android
+          cd android && chmod +x gradlew && ./gradlew bundleRelease assembleRelease --no-daemon --stacktrace
+
+      - name: Samla filer
+        run: |
+          cp android/app/build/outputs/bundle/release/app-release.aab PokeScan.aab
+          cp android/app/build/outputs/apk/release/app-release.apk PokeScan-release.apk
+          ls -la PokeScan.aab PokeScan-release.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PokeScan-play
+          path: |
+            PokeScan.aab
+            PokeScan-release.apk
+
+      - name: Publicera som utkast till release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: play-v1.0.${{ github.run_number }}
+          name: PokéScan för Google Play 1.0.${{ github.run_number }}
+          prerelease: true
+          body: Ladda upp PokeScan.aab i Google Play Console (Produktion eller Stängd testning).
+          files: |
+            PokeScan.aab
+            PokeScan-release.apk
