@@ -1,0 +1,10 @@
+{
+  "appId": "se.pokescan.app",
+  "appName": "PokéScan",
+  "webDir": "www",
+  "backgroundColor": "#dc0a2d",
+  "android": { "allowMixedContent": false },
+  "plugins": {
+    "CapacitorHttp": { "enabled": true }
+  }
+}

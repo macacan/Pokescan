@@ -1,0 +1,19 @@
+{
+  "name": "PokéScan",
+  "short_name": "PokéScan",
+  "description": "Skanna Pokémon-kort och se vad de är värda i kronor.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#dc0a2d",
+  "theme_color": "#dc0a2d",
+  "lang": "sv",
+  "categories": ["utilities", "shopping"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

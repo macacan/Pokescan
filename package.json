@@ -1,0 +1,17 @@
+{
+  "name": "pokescan",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Skanna Pokémon-kort och se vad de är värda i kronor.",
+  "scripts": {
+    "icons": "capacitor-assets generate --android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/core": "^6.2.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^6.2.0"
+  }
+}
