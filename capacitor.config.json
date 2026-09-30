@@ -1,10 +1,14 @@
 {
-  "appId": "se.pokescan.app",
-  "appName": "PokéScan",
+  "appId": "se.kortkoll.app",
+  "appName": "KortKoll",
   "webDir": "www",
-  "backgroundColor": "#dc0a2d",
-  "android": { "allowMixedContent": false },
+  "backgroundColor": "#1b2366",
+  "android": {
+    "allowMixedContent": false
+  },
   "plugins": {
-    "CapacitorHttp": { "enabled": true }
+    "CapacitorHttp": {
+      "enabled": true
+    }
   }
 }
