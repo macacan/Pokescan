@@ -1000,8 +1000,7 @@ $('#file').addEventListener('change', e => {
 });
 
 /* ---------- Avläsningsanimation ---------- */
-const FX_MSGS = ['Väcker Pikachu …', 'Vänta lite, Snorlax är i vägen …', 'Frågar Professor Oak …', 'Polerar förstoringsglaset …', 'Kollar om kortet är holo …',
-  'Jagar bort Team Rocket …', 'Räknar Pokémon-tupplurar …', 'Letar efter Charizard under sängen …', 'Kittlar Jigglypuff …', 'Blåser i kassetten …', 'Tränar på att läsa Unown …'];
+const FX_MSGS = ['Väcker Pikachu …', 'Vänta lite, Snorlax är i vägen …', 'Frågar Professor Oak …', 'Polerar förstoringsglaset …', 'Kollar om kortet är holo …', 'Jagar bort Team Rocket …', 'Räknar Pokémon-tupplurar …', 'Letar efter Charizard under sängen …', 'Kittlar Jigglypuff …', 'Blåser i kassetten …', 'Tränar på att läsa Unown …', 'Bjuder Psyduck på huvudvärkstabletter …', 'Väntar på att Slowpoke fattar …', 'Byter batteri i Rotom …', 'Ber Magikarp hoppa lite snabbare …', 'Kollar i Pokédexen …', 'Skrämmer bort en Zubat …', 'Tvättar kortet med Squirtle …', 'Sorterar kort med Alakazam …', 'Värmer upp med Charmander …', 'Letar efter ett glänsande kort …', 'Mutar Meowth för ett bra pris …', 'Räknar kronor med Persian …', 'Nästan klart, Ditto härmar redan …', 'Övertygar Machop att lyfta kortet …', 'Väcker Munchlax, men det är svårt …'];
 let fxTimer = null, fxI = 0;
 function fxNext(){
   const m = $('#fxMsg'); m.textContent = FX_MSGS[fxI++ % FX_MSGS.length];
@@ -1009,7 +1008,7 @@ function fxNext(){
 }
 function startFx(){
   fxI = Math.floor(Math.random() * FX_MSGS.length); fxNext(); $('#fxSub').textContent = 'Läser av kortet';
-  $('#scanFx').hidden = false; clearInterval(fxTimer); fxTimer = setInterval(fxNext, 1700);
+  $('#scanFx').hidden = false; clearInterval(fxTimer); fxTimer = setInterval(fxNext, 4500);
 }
 function stopFx(){ clearInterval(fxTimer); $('#scanFx').hidden = true; }
 function phase(t){ const st = $('#scanStatus'); st.className = 'status'; st.textContent = t; if (!$('#scanFx').hidden) $('#fxSub').textContent = t.replace(/\s*…$/, ''); }
@@ -1249,9 +1248,9 @@ async function runOcr(canvas, uploaded){
     // Låt animationen synas lagom länge även när avläsningen går blixtsnabbt
     const left = 900 - (Date.now() - t0); if (left > 0) await new Promise(res => setTimeout(res, left));
     fillFields(r);
-    stopFx(); frame.classList.remove('busy');
-    if (r.name || r.number) await finish(r, ranked);
-    else { st.textContent = 'Kunde inte läsa kortet. Prova bättre ljus, eller skriv namn och nummer själv.'; st.classList.add('err'); }
+    frame.classList.remove('busy');
+    if (r.name || r.number){ phase('Slår upp kortet …'); try { await finish(r, ranked); } finally { stopFx(); } }
+    else { stopFx(); st.textContent = 'Kunde inte läsa kortet. Prova bättre ljus, eller skriv namn och nummer själv.'; st.classList.add('err'); }
   } catch (e){
     stopFx(); frame.classList.remove('busy');
     st.textContent = e.message === 'lib' ? 'Textläsaren kunde inte laddas (kräver internet). Skriv namn och nummer manuellt.' : 'Avläsningen misslyckades. Skriv namn och nummer manuellt.';
