@@ -853,6 +853,49 @@ $('#more').addEventListener('click', () => loadBatch(gen, null));
 $('#sort').addEventListener('change', () => list.length && renderGrid());
 
 let curDetail = null;
+/* ---------- Avgör mellan flera möjliga kort (samma nummer och total i olika set) ---------- */
+/* Två ledtrådar utan AI: 1) setkoden som står vid numret ("DRI EN") och 2) namnet någonstans i kortets övre del, jämfört med just de kandidater som finns kvar. */
+async function setAbbr(sid){
+  try {
+    if (!setInfo.has(sid)) setInfo.set(sid, api('/sets/' + encodeURIComponent(sid)).catch(() => null));
+    const st = await setInfo.get(sid);
+    return String(st?.abbreviation?.official || st?.abbreviation?.normal || '').toUpperCase();
+  } catch { return ''; }
+}
+async function disambiguate(ranked, raw, cardCanvas){
+  const top = ranked.slice(0, 8), sids = [...new Set(top.map(x => x.card.set))].slice(0, 5);
+  const abbr = Object.fromEntries(await Promise.all(sids.map(async sid => [sid, await setAbbr(sid)])));
+  // 1) setkod i texten (siffror som liknar bokstäver rättas: 1->I, 0->O, 5->S)
+  const flat = String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/0/g, 'O').replace(/1/g, 'I').replace(/5/g, 'S').replace(/8/g, 'B');
+  const codeScore = a => { if (!a || a.length < 2) return 0; const code = a.replace(/0/g, 'O').replace(/1/g, 'I'); let best = 99;
+    for (let i = 0; i + code.length <= flat.length; i++){ let mm = 0; for (let j = 0; j < code.length; j++) if (flat[i + j] !== code[j]) mm++; if (mm < best) best = mm; if (!best) break; }
+    return best === 0 ? 1 : best === 1 && code.length >= 3 ? .5 : 0; };
+  // 2) namn i övre delen av kortet (glesläsning av hela bandet, inget fast läge)
+  let words = [];
+  if (cardCanvas){
+    try {
+      const w = await getWorker(), H = cardCanvas.height, W = cardCanvas.width;
+      await w.setParameters({ tessedit_pageseg_mode: '11', tessedit_char_whitelist: '' });
+      const r = await w.recognize(prep(cardCanvas, 0, 0, W, H * .26, H * .26 * 1.6, 'gray'));
+      words = (r.data.words || []).map(x => normName(x.text)).filter(x => x.length >= 3);
+    } catch {}
+  }
+  const joined = []; for (let i = 0; i < words.length; i++){ joined.push(words[i]); if (i + 1 < words.length) joined.push(words[i] + ' ' + words[i + 1]); }
+  // 3) konstverket: vilken kandidat liknar bilden mest? (relativ jämförelse, kräver marginal)
+  let sims = {};
+  if (cardCanvas && top.length > 1) sims = await artSims(cardCanvas, top.map(x => x.card.id)).catch(() => ({}));
+  const sv = Object.values(sims).sort((x, y) => y - x), artBest = sv.length > 1 && sv[0] - sv[1] >= .08 ? sv[0] : null;
+  const out = top.map(e => {
+    const core = nameCore(e.card.key), hit = joined.reduce((m, t) => Math.max(m, nameSim(t, core)), 0);
+    const artB = artBest != null && sims[e.card.id] === artBest ? .35 : 0;
+    const bonus = codeScore(abbr[e.card.set]) * .4 + (hit >= .85 ? .4 : hit >= .7 ? .2 : 0) + artB;
+    return { ...e, score: e.score + bonus, bonus, hit };
+  }).sort((a, b) => b.score - a.score);
+  const a = out[0], b = out[1];
+  if (a && a.bonus >= .35 && (!b || a.score - b.score >= .2)){ a.num = a.tot = true; a.nsim = Math.max(a.nsim, .9); }
+  return out.concat(ranked.slice(8));
+}
+
 /* ---------- Kortinformation ---------- */
 const VARNAMES = { normal: 'Vanlig', reverse: 'Reverse holo', holo: 'Holo', firstEdition: '1st Edition', wPromo: 'Promo' };
 const setInfo = new Map();
@@ -1327,7 +1370,7 @@ async function showCandidates(ranked, total){
 /* ---------- Kamera ---------- */
 let lastCanvas = null;
 let stream = null, track = null, torchOn = false, torchOK = true;
-let autoOn = false, autoBusy = false, autoTimer = null, lastKey = '', fails = 0;
+let autoOn = false, autoBusy = false, autoTimer = null, lastKey = '', fails = 0, lastDisSig = '';
 const video = $('#video'), shot = $('#shot'), frame = $('#frame');
 function stopCamera(){
   autoOn = false; clearTimeout(autoTimer); $('#autoChip').hidden = true; torchOn = false; triedSwitch = false; $('#torch').classList.remove('on');
@@ -1486,6 +1529,11 @@ function startAuto(){
           const r = await readCard(up, true, 3); if (!autoOn) return;
           let ranked = rankCandidates(r), art = [];
           if (!strong(ranked)){ art = await artMatch(up).catch(() => []); if (!autoOn) return; ranked = withArt(rankCandidates(r), art); }
+          // samma nummer i flera set: avgör med setkod, namn och konstverk (högst en gång per uppsättning kandidater)
+          if (!strong(ranked) && ranked.length > 1 && ranked.slice(0, 8).some(x => x.num)){
+            const sig = ranked.slice(0, 3).map(x => x.card.id).join();
+            if (sig !== lastDisSig){ lastDisSig = sig; ranked = await disambiguate(ranked, r.raw, up); if (!autoOn) return; }
+          }
           const key = ranked[0] ? ranked[0].card.id : '';
           const found = key && (strong(ranked) || (confident(ranked) && key === lastKey));
           if (blockKey && key !== blockKey && Date.now() > blockUntil) blockKey = '';   // kortet togs bort eller byttes: redo för nästa
@@ -1587,18 +1635,36 @@ function sharpness(c){
   return s2 / n - (s / n) ** 2;
 }
 /* De bästa bildträffarna för ett beskuret kort: [{id, s}] där s = likhet 0–1 (flera små förskjutningar tål snett beskuren bild) */
-async function artMatch(card){
-  const a = await loadArt(); if (!a || !window.Fingerprint) return [];
+/* Fingeravtryck av en kortbild för flera små förskjutningar och två skalor (tål snett eller för löst beskuren bild) */
+function artQueries(card){
   const FP = Fingerprint;
   let c = card;
   while (c.width > FP.CW * 2){ const t = document.createElement('canvas'); t.width = c.width >> 1; t.height = c.height >> 1; const g = t.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(c, 0, 0, t.width, t.height); c = t; }
   const f = document.createElement('canvas'); f.width = FP.CW; f.height = FP.CH;
   const fg = f.getContext('2d', { willReadFrequently: true }); fg.imageSmoothingQuality = 'high'; fg.drawImage(c, 0, 0, FP.CW, FP.CH);
-  const d = fg.getImageData(0, 0, FP.CW, FP.CH).data, best = new Map();
-  for (const [dx, dy] of [[0, 0], [.03, 0], [-.03, 0], [0, .03], [0, -.03]]){
-    for (const t of FP.match(a.db, a.n, FP.vector(FP.describe(d, FP.CW, FP.CH, 4, dx, dy)), 8)) best.set(t.i, Math.max(best.get(t.i) ?? -1, t.s));
-  }
+  const d = fg.getImageData(0, 0, FP.CW, FP.CH).data, out = [];
+  for (const dy of [-.06, -.03, 0, .03, .06]) for (const dx of [-.06, -.03, 0, .03, .06]) out.push(FP.vector(FP.describe(d, FP.CW, FP.CH, 4, dx, dy)));
+  return out;
+}
+async function artMatch(card){
+  const a = await loadArt(); if (!a || !window.Fingerprint) return [];
+  const FP = Fingerprint, best = new Map();
+  // grov första sökning med fem förskjutningar över hela indexet
+  const qs = artQueries(card), pick = [12, 7, 17, 11, 13].map(i => qs[i]);
+  for (const q of pick) for (const t of FP.match(a.db, a.n, q, 8)) best.set(t.i, Math.max(best.get(t.i) ?? -1, t.s));
   return [...best].map(([i, s]) => ({ id: a.ids[i], s })).sort((x, y) => y.s - x.s).slice(0, 8);
+}
+/* Likhet mellan en kortbild och just de här korten (jämförelse mellan kandidater tål låg absolut likhet), alla 25 förskjutningar */
+async function artSims(card, ids){
+  const a = await loadArt(); if (!a || !window.Fingerprint) return {};
+  if (!a.idx) a.idx = new Map(a.ids.map((id, i) => [id, i]));
+  const FP = Fingerprint, qs = artQueries(card), out = {};
+  for (const id of ids){
+    const i = a.idx.get(id); if (i == null) continue; let best = -1;
+    for (const q of qs){ let sc = 0, o = i * FP.LEN; for (let k = 0; k < FP.LEN; k++) sc += a.db[o + k] * q[k]; sc /= 127 * 127; if (sc > best) best = sc; }
+    out[id] = best;
+  }
+  return out;
 }
 /* Slå ihop textträffar och bildträffar: stämmer båda höjs poängen, och en mycket tydlig bildträff räknas som säker */
 function withArt(ranked, art){
@@ -1813,8 +1879,11 @@ async function anchorCrop(canvas){
   const w = await getWorker(), H = canvas.height, W = canvas.width;
   await w.setParameters({ tessedit_pageseg_mode: '11', tessedit_char_whitelist: '' });
   const oy = H * .3;                           // copyrightraden sitter längst ner på kortet: läs bara nedre delen (snabbare)
-  const r = await w.recognize(prep(canvas, 0, oy, W, H - oy, H - oy, 'gray'));
-  (r.data.words || []).forEach(x => { x.bbox.y0 += oy; x.bbox.y1 += oy; });
+  // stora foton läses i mindre storlek (annars tar glesläsningen 10–30 s); texten är fortfarande tillräckligt stor
+  const k = Math.min(1, 1100 / W), sm = document.createElement('canvas'); sm.width = Math.round(W * k); sm.height = Math.round((H - oy) * k);
+  sm.getContext('2d').drawImage(canvas, 0, oy, W, H - oy, 0, 0, sm.width, sm.height);
+  const r = await w.recognize(prep(sm, 0, 0, sm.width, sm.height, sm.height, 'gray'));
+  (r.data.words || []).forEach(x => { x.bbox.x0 /= k; x.bbox.x1 /= k; x.bbox.y0 = x.bbox.y0 / k + oy; x.bbox.y1 = x.bbox.y1 / k + oy; });
   const ws = (r.data.words || []).filter(x => /nintendo|creatures|freak|game|pok[eé]mon|^.?20\d\d$|^.?20\d\d/i.test(x.text));
   let best = null;
   for (const a of ws){
@@ -1903,14 +1972,19 @@ async function runOcr(canvas, uploaded, full){
         consider(rc); best = m;
       }
     }
-    if (!strong(ranked) && crop && !over()){ consider(await readCard(canvas, true)); }
-    // 5) Grundligare läsning av samma bild
-    if (!strong(ranked) && !over()){
+    // 4b) Samma nummer i flera set? Avgör med setkoden och namnet på kortets övre del
+    if (!strong(ranked) && ranked.length > 1 && ranked.slice(0, 8).some(x => x.num) && !over()){
+      phase('Avgör vilket set …');
+      ranked = await disambiguate(ranked, r.raw, best);
+    }
+    // 5) Grundligare läsning av samma bild – bara om vi saknar ett läsbart nummer (annars hjälper det inte och tar lång tid)
+    const haveNum = () => ranked.some(x => x.num && x.tot);
+    if (!strong(ranked) && !haveNum() && !over()){
       phase('Läser noggrant …');
       consider(merge(r, await readCard(best, false)));
     }
     // 6) Sista utväg för uppladdade foton: sök text i hela bilden
-    if (!strong(ranked) && uploaded && !over()){
+    if (!strong(ranked) && !haveNum() && uploaded && !over()){
       phase('Letar i hela bilden …');
       const r2 = await readWhole(canvas), mg = merge(r, r2);
       if (validNum(r2) && !validNum(r)){ mg.number = r2.number; mg.total = r2.total; }
@@ -1920,8 +1994,8 @@ async function runOcr(canvas, uploaded, full){
     const left = 900 - (Date.now() - t0); if (left > 0) await new Promise(res => setTimeout(res, left));
     fillFields(r);
     frame.classList.remove('busy');
-    if (r.name || r.number || ranked.length){ phase('Slår upp kortet …'); try { await finish(r, ranked); } finally { stopFx(); } if (!st.classList.contains('err')) st.textContent += ` (${((Date.now() - t0) / 1000).toFixed(1)} s${tilt ? ', rätade upp ' + Math.round(Math.abs(tilt)) + '°' : ''}${ocrMode ? ', ' + ocrMode + ' textläsare' : ''})`; }
-    else { stopFx(); st.textContent = 'Kunde inte läsa kortet. Prova bättre ljus, eller skriv namn och nummer själv.'; st.classList.add('err'); }
+    if (reliable(ranked).length){ phase('Slår upp kortet …'); try { await finish(r, ranked); } finally { stopFx(); } if (!st.classList.contains('err')) st.textContent += ` (${((Date.now() - t0) / 1000).toFixed(1)} s${tilt ? ', rätade upp ' + Math.round(Math.abs(tilt)) + '°' : ''}${ocrMode ? ', ' + ocrMode + ' textläsare' : ''})`; }
+    else { stopFx(); st.textContent = 'Kunde inte läsa av kortet. Prova bättre ljus och håll det rakt, eller skriv namn och nummer själv.'; st.classList.add('err'); }
   } catch (e){
     stopFx(); frame.classList.remove('busy');
     st.textContent = e.message === 'lib' ? 'Textläsaren startade inte. Starta om appen, eller skriv namn och nummer själv.' : 'Avläsningen misslyckades. Skriv namn och nummer manuellt.';
@@ -1962,17 +2036,37 @@ function cropCard(src){
   out.getContext('2d').drawImage(src, sx, sy, sw, sh, 0, 0, out.width, out.height);
   return out;
 }
-async function finish(r, ranked){
+/* Flera möjliga kort: visa dem direkt i en ruta överst, så man slipper skrolla ner till resultatlistan */
+function showPicker(){
+  const items = list.slice(0, 24); if (items.length < 2) return;
+  const d = $('#detail');
+  d.innerHTML = `<div class="pick"><h2>Välj rätt kort</h2><p class="meta">${items.length} möjliga träffar. Tryck på det som stämmer med ditt kort.</p><div class="grid" id="pickGrid">${items.map((c, i) => `<button class="tile" type="button" data-i="${i}">${tileInner(c)}</button>`).join('')}</div></div>`;
+  openSheet();
+  d.querySelectorAll('#pickGrid .tile').forEach(b => b.addEventListener('click', () => showDetail(items[+b.dataset.i])));
+}
+/* Vilka träffar är tillräckligt säkra för att visas? Hellre "kunde inte läsa kortet" än ett gissat kort. */
+function reliable(ranked){
+  if (!ranked || !ranked.length) return [];
+  if (strong(ranked)) return ranked.slice(0, 1);
+  const pairs = ranked.filter(x => x.num && x.tot);                 // nummer och total stämmer (flera set kan dela dem)
+  if (pairs.length) return pairs.slice(0, 8);
+  const names = ranked.filter(x => x.nsim >= .85);                  // tydligt namn utan läsbart nummer: visa alla utgåvor
+  if (names.length) return names.slice(0, 24);
+  return ranked.filter(x => x.art >= .85).slice(0, 3);              // mycket tydlig bildträff
+}
+async function finish(r, ranked, manual){
   const st = $('#scanStatus'); st.className = 'status';
   if (ranked && ranked.length){
-    const good = strong(ranked) ? ranked.slice(0, 1) : ranked.filter(x => x.score >= ranked[0].score - .15).slice(0, 8);
+    const good = manual ? (strong(ranked) ? ranked.slice(0, 1) : ranked.filter(x => x.score >= ranked[0].score - .15).slice(0, 8)) : reliable(ranked);
+    if (!good.length){ st.textContent = 'Kunde inte läsa av kortet säkert. Prova bättre ljus och håll det rakt, eller skriv namn och nummer själv.'; st.classList.add('err'); return; }
     if (good.length === 1){ const c = good[0].card; $('#ocrName').value = c.name; $('#ocrNum').value = c.localId; $('#ocrTot').value = IDX.sets[c.set]?.official || $('#ocrTot').value; }
     const n = await showCandidates(good, null);
     if (n === 1 && strong(ranked)) showDetail(list[0]);
-    st.textContent = n === 1 && strong(ranked) ? 'Hittade kortet.' : 'Osäker träff – tryck på rätt kort nedan.';
+    else if (n > 1) showPicker();
+    st.textContent = n === 1 && strong(ranked) ? 'Hittade kortet.' : n === 1 ? 'Osäker träff – kontrollera att det är rätt kort.' : 'Flera möjliga kort – välj rätt i rutan.';
     return;
   }
-  await lookup();
+  if (manual) await lookup();
 }
 $('#reScan').addEventListener('click', async () => { if (!lastCanvas) return; const b = $('#reScan'); b.disabled = true; try { await runOcr(lastCanvas, true); } finally { b.disabled = false; b.textContent = 'Läs av igen'; } });
 attachSuggest($('#ocrName'), () => $('#ocrGo').click());
@@ -1982,7 +2076,7 @@ $('#ocrGo').addEventListener('click', async () => {
   const r = { name: $('#ocrName').value.trim(), number: $('#ocrNum').value.trim(), total: $('#ocrTot').value.trim() };
   await loadIndex();
   const ranked = rankCandidates(r);
-  if (ranked.length) return finish(r, ranked);
+  if (ranked.length) return finish(r, ranked, true);
   lookup();
 });
 async function lookup(){
@@ -1994,7 +2088,8 @@ async function lookup(){
       if (!q.name && !q.number) continue;
       n = await runSearch(q); if (n) break;
     }
-    st.textContent = n === 1 ? 'Hittade kortet.' : n ? 'Flera möjliga kort. Välj rätt nedan.' : 'Inga träffar. Justera namn eller nummer och sök igen.';
+    if (n > 1) showPicker();
+    st.textContent = n === 1 ? 'Hittade kortet.' : n ? 'Flera möjliga kort. Välj rätt i rutan.' : 'Inga träffar. Justera namn eller nummer och sök igen.';
     if (!n) st.classList.add('err');
   } catch {
     $('#results').hidden = true;
