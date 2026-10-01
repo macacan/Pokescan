@@ -8,15 +8,19 @@ const FP = require('../www/fingerprint.js');
 const LANG = 'en', CONC = 24;
 
 const list = await (await fetch(`https://api.tcgdex.net/v2/${LANG}/cards`)).json();
-const cards = list.filter(c => c.image);
-console.log(`${cards.length} kort med bild`);
+// kort som saknar bild hos TCGdex: reservbild från den dagliga prisfilen (pokemontcg.io eller TCGplayer), se tools/build-prices.mjs
+let alt = {};
+try { const r = await fetch('https://raw.githubusercontent.com/macacan/Pokescan/prices/img.json'); if (r.ok) alt = (await r.json()).c || {}; } catch {}
+const url = c => c.image ? c.image + '/low.webp' : alt[c.id] ? (alt[c.id][0] ? `https://images.pokemontcg.io/${alt[c.id][0]}.png` : `https://tcgplayer-cdn.tcgplayer.com/product/${alt[c.id][1]}_200w.jpg`) : null;
+const cards = list.filter(c => url(c));
+console.log(`${cards.length} kort med bild (${cards.filter(c => !c.image).length} med reservbild)`);
 const ids = [], vecs = [];
 let done = 0, failed = 0;
 
 async function one(c){
   for (let t = 0; t < 3; t++){
     try {
-      const r = await fetch(c.image + '/low.webp');
+      const r = await fetch(url(c));
       if (!r.ok) throw new Error(r.status);
       const buf = Buffer.from(await r.arrayBuffer());
       const { data } = await sharp(buf).resize(FP.CW, FP.CH, { fit: 'fill' }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
