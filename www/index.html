@@ -793,7 +793,7 @@ function renderGrid(){
     const b = document.createElement('button'); b.className = 'tile ' + tier(c); b.style.setProperty('--i', idx); b.innerHTML = tileInner(c);
     b.addEventListener('click', () => showDetail(c)); tileEls[c.id] = b; g.appendChild(b);
   });
-  $('#results').hidden = !list.length; $('#more').hidden = shown >= list.length;
+  $('#results').hidden = !list.length || (list.length === 1 && !!list[0].scanHit); $('#more').hidden = shown >= list.length;
 }
 function tier(c){ const v = prices(c).main; return v == null ? '' : v >= 1000 ? 't-epic' : v >= 200 ? 't-rare' : v >= 20 ? 't-up' : ''; }
 function updateTile(c){ const b = tileEls[c.id]; if (!b) return; b.className = 'tile ' + tier(c); b.innerHTML = tileInner(c); }
@@ -948,6 +948,7 @@ async function showDetail(c){
       ${infoTable(c)}
       <div class="row">
         <a class="btn quiet" href="${esc(link)}" target="_blank" rel="noopener">Sök på Cardmarket</a>
+        ${c.scanHit ? '<button class="btn quiet" id="similar" type="button">Visa liknande kort</button>' : ''}
       </div>
     </div></div>`;
   openSheet();
@@ -957,6 +958,12 @@ async function showDetail(c){
   if (s.length >= 2) drawChart($('#chart'), s);
   d.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => { c.pick = b.dataset.v; showDetail(c); if (list.length) renderGrid(); }));
   $('#condSel').addEventListener('change', e => { c.cond = e.target.value; showDetail(c); if (list.length) renderGrid(); });
+  $('#similar')?.addEventListener('click', async () => {
+    closeSheet(); c.scanHit = false;
+    const st = $('#scanStatus'); st.className = 'status'; st.textContent = 'Söker liknande kort …';
+    const n = await runSearch({ name: nameCore(normName(c.name)) || c.name });
+    st.textContent = n ? `${n} liknande kort visas nedan.` : 'Hittade inga liknande kort.';
+  });
   $('#addColl').addEventListener('click', e => { addToColl(c); burst(e.target); e.target.textContent = 'Tillagd i samlingen'; e.target.disabled = true; });
 }
 
@@ -2085,7 +2092,7 @@ async function finish(r, ranked, manual){
     if (!good.length){ st.textContent = 'Kunde inte läsa av kortet säkert. Prova bättre ljus och håll det rakt, eller skriv namn och nummer själv.'; st.classList.add('err'); return; }
     if (good.length === 1){ const c = good[0].card; $('#ocrName').value = c.name; $('#ocrNum').value = c.localId; $('#ocrTot').value = IDX.sets[c.set]?.official || $('#ocrTot').value; }
     const n = await showCandidates(good, null);
-    if (n === 1 && strong(ranked)) showDetail(list[0]);
+    if (n === 1 && strong(ranked)){ list[0].scanHit = true; $('#results').hidden = true; showDetail(list[0]); }
     else if (n > 1) showPicker();
     st.textContent = n === 1 && strong(ranked) ? 'Hittade kortet.' : n === 1 ? 'Osäker träff – kontrollera att det är rätt kort.' : 'Flera möjliga kort – välj rätt i rutan.';
     return;
@@ -2113,6 +2120,7 @@ async function lookup(){
       n = await runSearch(q); if (n) break;
     }
     if (n > 1) showPicker();
+    if (n === 1){ list[0].scanHit = true; $('#results').hidden = true; showDetail(list[0]); }
     st.textContent = n === 1 ? 'Hittade kortet.' : n ? 'Flera möjliga kort. Välj rätt i rutan.' : 'Inga träffar. Justera namn eller nummer och sök igen.';
     if (!n) st.classList.add('err');
   } catch {
