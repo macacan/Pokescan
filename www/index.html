@@ -420,7 +420,7 @@ dialog a{color:var(--accent);font-weight:700}
           <button class="btn yellow" id="snap" disabled>Ta bild</button>
           <label class="btn quiet" style="cursor:pointer">Bibliotek<input id="file" type="file" accept="image/*" hidden></label>
         </div>
-        <label class="auto-add"><input type="checkbox" id="autoAdd"><span>Lägg till direkt i samlingen och fortsätt skanna</span></label>
+        <label class="auto-add"><input type="checkbox" id="autoAdd"><span>Skanna flera kort automatiskt (läggs direkt i samlingen)</span></label>
       </div>
       <div>
         <div class="row" id="ocrFields" hidden>
@@ -1266,7 +1266,7 @@ $('#startCam').addEventListener('click', async () => {
     $('#startCam').textContent = 'Stäng';
     loadIndex(); loadArt();
     st.textContent = '';
-    startAuto();
+    if ($('#autoAdd').checked) startAuto();
   } catch {
     st.textContent = 'Kameran startade inte. Tillåt kameraåtkomst, eller ladda upp ett foto från galleriet.'; st.classList.add('err');
   }
@@ -1325,8 +1325,13 @@ function grabFrame(){
 }
 /* ---------- Skanna flera: lägg till direkt och fortsätt ---------- */
 let batchN = 0, batchSum = 0, blockKey = '', blockUntil = 0, hitT = null, hitUndo = null;
-$('#autoAdd').checked = store.get('autoAdd', true);
-$('#autoAdd').addEventListener('change', e => store.set('autoAdd', e.target.checked));
+$('#autoAdd').checked = store.get('batchScan', false);
+$('#autoAdd').addEventListener('change', e => {
+  store.set('batchScan', e.target.checked);
+  if (!stream) return;
+  if (e.target.checked) startAuto();
+  else { autoOn = false; clearTimeout(autoTimer); $('#autoChip').hidden = true; $('#hit').hidden = true; }
+});
 function showHit(c, p, sub){
   $('#hitImg').src = c.img || ''; $('#hitName').textContent = c.name;
   $('#hitSub').textContent = sub; $('#hitCount').textContent = batchN ? `${batchN} ${batchN === 1 ? 'kort' : 'kort'} tillagda · ${kr(batchSum)}` : '';
@@ -1388,6 +1393,7 @@ function startAuto(){
         if (lum < 45){ chip('För mörkt – tänd blixten eller gå till bättre ljus', true); }
         else if (sharp < 40){ chip('Håll still – bilden är suddig', true); }
         else if (!IDX.cards){ chip('Laddar kortdatabasen …'); }
+        else if (!worker || !worker2){ chip('Laddar textläsaren …'); getWorker().catch(() => {}); getWorker2().catch(() => {}); }
         else {
           chip(lum > 225 ? 'Mycket ljust – undvik reflexer, luta kortet lite' : 'Läser av …', lum > 225);
           const up = upscale(fr, 1300);
@@ -1419,7 +1425,9 @@ function startAuto(){
           }
           }
         }
-      } catch (e){  } finally { autoBusy = false; }
+      } catch (e){
+        if (e && e.message === 'lib'){ autoOn = false; chip('Textläsaren startade inte. Starta om appen eller använd Ta bild.', true); return; }
+      } finally { autoBusy = false; }
     }
     if (autoOn) autoTimer = setTimeout(tick, 300);
   };
@@ -1428,7 +1436,7 @@ function startAuto(){
 $('#snap').addEventListener('click', async () => {
   // vänta tills en pågående automatisk avläsning är klar (textläsarna delas)
   autoOn = false; clearTimeout(autoTimer); $('#autoChip').hidden = true;
-  while (autoBusy) await new Promise(r => setTimeout(r, 50));
+  for (let t0 = Date.now(); autoBusy && Date.now() - t0 < 3000;) await new Promise(r => setTimeout(r, 50));
   // Flera bilder efter varandra, den skarpaste används
   let c = grabFrame(), best = sharpness(c);
   for (let i = 0; i < 5; i++){ await new Promise(r => setTimeout(r, 80)); const f = grabFrame(), v = sharpness(f); if (v > best){ best = v; c = f; } }
@@ -1525,11 +1533,23 @@ function withArt(ranked, art){
 
 /* ---------- OCR ---------- */
 /* Textläsaren, dess motor och språkdata ligger i appen (fungerar offline, inga externa anrop) */
-const mkWorker = () => Tesseract.createWorker('eng', 1, {
+const LOCAL_OCR = {
   workerPath: new URL('vendor/worker.min.js', location.href).href,
   corePath: new URL('vendor/core', location.href).href,
   langPath: new URL('vendor/lang', location.href).href
-});
+};
+const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+let localOcrFailed = false, ocrMode = '';
+/* Försök med textläsaren i appen; startar den inte inom rimlig tid används den på nätet (som tidigare) */
+async function mkWorker(){
+  if (!window.Tesseract) throw new Error('lib');
+  if (!localOcrFailed){
+    try { const w = await withTimeout(Tesseract.createWorker('eng', 1, LOCAL_OCR), 25000); ocrMode = 'lokal'; return w; }
+    catch { localOcrFailed = true; }
+  }
+  try { const w = await withTimeout(Tesseract.createWorker('eng'), 45000); ocrMode = 'online'; return w; }
+  catch { throw new Error('lib'); }
+}
 let worker = null, workerP = null;
 function getWorker(){
   if (worker) return Promise.resolve(worker);
@@ -1777,7 +1797,7 @@ async function runOcr(canvas, uploaded){
     else { stopFx(); st.textContent = 'Kunde inte läsa kortet. Prova bättre ljus, eller skriv namn och nummer själv.'; st.classList.add('err'); }
   } catch (e){
     stopFx(); frame.classList.remove('busy');
-    st.textContent = e.message === 'lib' ? 'Textläsaren kunde inte laddas (kräver internet). Skriv namn och nummer manuellt.' : 'Avläsningen misslyckades. Skriv namn och nummer manuellt.';
+    st.textContent = e.message === 'lib' ? 'Textläsaren startade inte. Starta om appen, eller skriv namn och nummer själv.' : 'Avläsningen misslyckades. Skriv namn och nummer manuellt.';
     st.classList.add('err');
   }
 }
