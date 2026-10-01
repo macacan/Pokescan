@@ -534,6 +534,7 @@ dialog a{color:var(--accent);font-weight:700}
 
 <script src="vendor/tesseract.min.js"></script>
 <script src="fingerprint.js"></script>
+<script src="quad.js"></script>
 <script>
 (() => {
 'use strict';
@@ -1497,6 +1498,7 @@ function showHit(c, p, sub){
   $('#hit').hidden = false; clearTimeout(hitT); hitT = setTimeout(() => { $('#hit').hidden = true; }, 5000);
 }
 async function batchAdd(card){
+  noteSet(card.set);
   const c = { id: card.id, name: card.name, number: card.localId, img: card.image ? card.image + '/low.webp' : '', setName: IDX.sets[card.set]?.name, total: IDX.sets[card.set]?.official, detailed: false };
   navigator.vibrate?.(60);
   showHit(c, null, 'Hämtar pris …');
@@ -1548,7 +1550,8 @@ function startAuto(){
     if (!autoBusy && video.readyState >= 2){
       autoBusy = true;
       try {
-        let fr = grabFrame(); const tilt = estimateSkew(grabFull()); if (tilt) fr = rotateCanvas(fr, tilt);
+        const fullF = grabFull(2600); let fr = flatCard(fullF); const flatOk = !!fr;
+        if (!fr){ fr = grabFrame(); const tilt = estimateSkew(fullF); if (tilt) fr = rotateCanvas(fr, tilt); }
         const sharp = sharpness(fr), lum = brightness(fr);
         if (lum < 45){ chip('För mörkt – tänd blixten eller gå till bättre ljus', true); }
         else if (sharp < 40){ chip('Håll still – bilden är suddig', true); }
@@ -1557,9 +1560,11 @@ function startAuto(){
         else {
           chip(lum > 225 ? 'Mycket ljust – undvik reflexer, luta kortet lite' : 'Läser av …', lum > 225);
           const up = upscale(fr, 1300);
-          const r = await readCard(up, true, 3); if (!autoOn) return;
-          let ranked = rankCandidates(r), art = [];
-          if (!strong(ranked)){ art = await artMatch(up).catch(() => []); if (!autoOn) return; ranked = withArt(rankCandidates(r), art); }
+          let art = flatOk ? await artMatch(up).catch(() => []) : [];
+          const rk = m => withRecent(withArt(rankCandidates(m), art));
+          const r = await readCard(up, true, 3, m => strong(rk(m))); if (!autoOn) return;
+          let ranked = rk(r);
+          if (!strong(ranked) && !art.length){ art = await artMatch(up).catch(() => []); if (!autoOn) return; ranked = rk(r); }
           // samma nummer i flera set: avgör med setkod, namn och konstverk (högst en gång per uppsättning kandidater)
           if (!strong(ranked) && ranked.length > 1 && ranked.slice(0, 8).some(x => x.num)){
             const sig = ranked.slice(0, 3).map(x => x.card.id).join();
@@ -1605,7 +1610,7 @@ $('#snap').addEventListener('click', async () => {
   // Flera bilder efter varandra, den skarpaste används
   let c = grabFrame(), best = sharpness(c);
   for (let i = 0; i < 5; i++){ await new Promise(r => setTimeout(r, 80)); const f = grabFrame(), v = sharpness(f); if (v > best){ best = v; c = f; } }
-  const full = grabFull();
+  const full = grabFull(2600);
   shot.classList.remove('fit'); shot.src = c.toDataURL('image/jpeg', .92); shot.hidden = false; video.hidden = true; frame.hidden = true;
   stopCamera();
   await runOcr(c, false, full);
@@ -1696,6 +1701,13 @@ async function artSims(card, ids){
     out[id] = best;
   }
   return out;
+}
+/* Set du nyss skannat: delar flera set samma nummer väger de lite tyngre (man skannar ofta många kort ur samma set) */
+function noteSet(sid){ if (!sid) return; const l = store.get('recentSets', []).filter(x => x !== sid); l.unshift(sid); store.set('recentSets', l.slice(0, 10)); }
+function withRecent(ranked){
+  const rs = store.get('recentSets', []); if (!rs.length || !ranked.length) return ranked;
+  const out = ranked.map(x => x.num && x.tot && rs.includes(x.card.set) ? { ...x, score: x.score + .06 - rs.indexOf(x.card.set) * .003 } : x);
+  return out.sort((a, b) => b.score - a.score);
 }
 /* Slå ihop textträffar och bildträffar: stämmer båda höjs poängen, och en mycket tydlig bildträff räknas som säker */
 function withArt(ranked, art){
@@ -1826,7 +1838,7 @@ async function ocr(w, img, psm, wl){
   return { text: r.data.text || '', conf: r.data.confidence || 0 };
 }
 /* Läser namn och nummer ur en kortbild. quick = färre varianter (för autoläge). */
-async function readCard(canvas, quick, maxCalls){
+async function readCard(canvas, quick, maxCalls, enough){
   const w = await getWorker(), W = canvas.width, H = canvas.height; let calls = 0;
   const res = { name: '', number: '', total: '', raw: '' };
   const numWL = '0123456789/ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -1846,7 +1858,7 @@ async function readCard(canvas, quick, maxCalls){
     if (n && n.number && !res.number){ res.number = n.number; res.total = n.total; }
   }
   // 2) Namnet behövs bara om numret inte pekar ut ett enda kort. Flera band, valet styrs av likhet med riktiga kortnamn.
-  if (found && uniqueByNumber(res)) return res;
+  if (found && (uniqueByNumber(res) || (enough && enough(res)))) return res;   // numret + bildträffen räcker: hoppa över namnet
   if (maxCalls && !found) return res;      // snabbspåret: hittas inget nummer direkt är bilden troligen felriktad, låt hjälpspåren ta över
   const bands = [[W * .04, H * .025, W * .7, H * .09, 110], [W * .16, H * .03, W * .58, H * .08, 120], [W * .04, H * .045, W * .68, H * .095, 110]];
   const modes = quick ? ['bin', 'adp'] : ['bin', 'adp', 'inv'];
@@ -1898,12 +1910,38 @@ function rotateCanvas(src, deg){
   return c;
 }
 /* Hela kamerabilden (längsta sidan högst 1600 px): används när kortet inte ligger inom de gula hörnen */
-function grabFull(){
-  const vw = video.videoWidth, vh = video.videoHeight, k = Math.min(1, 1600 / Math.max(vw, vh));
+function grabFull(max){
+  const vw = video.videoWidth, vh = video.videoHeight, k = Math.min(1, (max || 1600) / Math.max(vw, vh));
   const c = document.createElement('canvas'); c.width = Math.round(vw * k); c.height = Math.round(vh * k);
   c.getContext('2d').drawImage(video, 0, 0, c.width, c.height); return c;
 }
 
+/* Hittar kortets fyra hörn och rätar ut det till ett platt, upprätt kort (klarar både vridning och perspektiv).
+   Hörnen söks i en liten kopia (snabbt), pixlarna hämtas sedan i full upplösning. Null om inget kort med tydliga kanter hittas. */
+function flatCard(src){
+  if (!window.Quad || !src || !src.width) return null;
+  try {
+    const s = 360 / Math.max(src.width, src.height), sm = document.createElement('canvas');
+    sm.width = Math.max(1, Math.round(src.width * s)); sm.height = Math.max(1, Math.round(src.height * s));
+    const g = sm.getContext('2d', { willReadFrequently: true }); g.drawImage(src, 0, 0, sm.width, sm.height);
+    const q = Quad.find(g.getImageData(0, 0, sm.width, sm.height).data, sm.width, sm.height);
+    if (!q) return null;
+    const pts = q.pts.map(([x, y]) => [x / s, y / s]);
+    // läs bara ut rutan runt kortet ur källbilden
+    const bx0 = Math.max(0, Math.floor(Math.min(...pts.map(p => p[0])))), by0 = Math.max(0, Math.floor(Math.min(...pts.map(p => p[1]))));
+    const bx1 = Math.min(src.width, Math.ceil(Math.max(...pts.map(p => p[0])))), by1 = Math.min(src.height, Math.ceil(Math.max(...pts.map(p => p[1]))));
+    const bw = bx1 - bx0, bh = by1 - by0; if (bw < 60 || bh < 80) return null;
+    const box = document.createElement('canvas'); box.width = bw; box.height = bh;
+    const bg = box.getContext('2d', { willReadFrequently: true }); bg.drawImage(src, bx0, by0, bw, bh, 0, 0, bw, bh);
+    const side = Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]) / 2 + Math.hypot(pts[2][0] - pts[3][0], pts[2][1] - pts[3][1]) / 2;
+    const W = Math.round(Math.min(1300, Math.max(900, side))), H = Math.round(W * 88 / 63);
+    const px = Quad.warp(bg.getImageData(0, 0, bw, bh).data, bw, bh, pts.map(([x, y]) => [x - bx0, y - by0]), W, H);
+    const out = document.createElement('canvas'); out.width = W; out.height = H;
+    out.getContext('2d').putImageData(new ImageData(px, W, H), 0, 0);
+    out.quad = q;
+    return out;
+  } catch { return null; }
+}
 /* Hittar kortet i ett foto via raden "©2025 Pokémon / Nintendo / Creatures / GAME FREAK" längst ner på moderna kort.
    Textens storlek och plats ger kortets storlek och läge, så vi kan beskära exakt även när kortet ligger på ett bord eller i en hand. */
 async function anchorCrop(canvas){
@@ -1970,17 +2008,32 @@ async function runOcr(canvas, uploaded, full){
   const t0 = Date.now(), over = () => Date.now() - t0 > 28000;
   try {
     await Promise.race([loadIndex(), new Promise(r => setTimeout(r, 15000))]);
-    // 1) Räta upp sneda kort (kanterna visar lutningen)
-    const tilt = estimateSkew(uploaded ? canvas : (full || canvas));
-    if (tilt){ canvas = rotateCanvas(canvas, tilt); if (full) full = rotateCanvas(full, tilt); }
-    canvas = upscale(canvas, 1300);
-    let art = [];
-    const rank = m => withArt(rankCandidates(m), art);
+    let art = [], r, ranked = [];
+    const rank = m => withRecent(withArt(rankCandidates(m), art));
     const consider = (m, rk) => { rk = rk || rank(m); if (rk.length && (!ranked.length || rk[0].score > ranked[0].score)){ r = m; ranked = rk; } };
     const merge = (x, y) => ({ name: pickName(x.name, y.name), number: y.number || x.number, total: y.total || x.total, raw: (x.raw || '') + ' ' + (y.raw || '') });
-    // 2) Kameran: snabbspår (högst 3 textläsningar), kortet ligger oftast inom de gula hörnen.
-    //    Uppladdade foton: hitta först själva kortet i bilden (copyrightraden) och läs bara det.
-    let r, ranked, crop = null, main = canvas;
+    // 1) Snabbspår: hitta kortets fyra hörn och räta ut det (vridning och perspektiv). På det platta kortet sitter numret alltid på samma ställe,
+    //    och konstverket jämförs först (några millisekunder). Pekar numret och bilden ut samma kort behövs varken namn eller fler läsningar.
+    const flat = flatCard(uploaded ? canvas : (full || canvas));
+    let tilt = 0, flatHit = null;
+    if (flat){
+      const fm = upscale(flat, 1300);
+      art = await artMatch(fm).catch(() => []);
+      const fr = await readCard(fm, true, 3, m => strong(rank(m))), fk = rank(fr);
+      flatHit = { r: fr, ranked: fk, art, canvas: fm };
+      if (strong(fk)){ r = fr; ranked = fk; }
+      art = [];
+    }
+    let best = canvas;
+    // 2) Gamla vägen när snabbspåret inte räcker (kortet skymt, i en hög eller utan tydliga kanter)
+    if (!strong(ranked)){
+    // räta upp sneda kort (kanterna visar lutningen)
+    tilt = estimateSkew(uploaded ? canvas : (full || canvas));
+    if (tilt){ canvas = rotateCanvas(canvas, tilt); if (full) full = rotateCanvas(full, tilt); }
+    canvas = upscale(canvas, 1300);
+    // Kameran: snabbspår (högst 3 textläsningar), kortet ligger oftast inom de gula hörnen.
+    // Uppladdade foton: hitta först själva kortet i bilden (copyrightraden) och läs bara det.
+    let crop = null, main = canvas;
     if (uploaded){
       crop = (await anchorCrop(canvas).catch(() => null)) || cropCard(canvas);
       if (crop) main = upscale(crop, 1300);
@@ -1992,8 +2045,11 @@ async function runOcr(canvas, uploaded, full){
       art = await artMatch(main).catch(() => []);
       ranked = rank(r);
     }
+    best = main;
+    // det uträtade kortet kan ändå ha läst numret bäst
+    if (flatHit && flatHit.ranked.length && (!ranked.length || flatHit.ranked[0].score > ranked[0].score)){ r = flatHit.r; ranked = flatHit.ranked; art = flatHit.art; best = flatHit.canvas; }
+    }
     // 4) Kameran: låg kortet utanför de gula hörnen? Leta upp det i hela bilden
-    let best = main;
     if (!strong(ranked) && !uploaded && full && !over()){
       phase('Letar efter kortet …');
       const ac = await anchorCrop(full).catch(() => null);
@@ -2025,7 +2081,7 @@ async function runOcr(canvas, uploaded, full){
     const left = 900 - (Date.now() - t0); if (left > 0) await new Promise(res => setTimeout(res, left));
     fillFields(r);
     frame.classList.remove('busy');
-    if (reliable(ranked).length){ phase('Slår upp kortet …'); try { await finish(r, ranked); } finally { stopFx(); } if (!st.classList.contains('err')) st.textContent += ` (${((Date.now() - t0) / 1000).toFixed(1)} s${tilt ? ', rätade upp ' + Math.round(Math.abs(tilt)) + '°' : ''}${ocrMode ? ', ' + ocrMode + ' textläsare' : ''})`; }
+    if (reliable(ranked).length){ phase('Slår upp kortet …'); try { await finish(r, ranked); } finally { stopFx(); } if (!st.classList.contains('err')) st.textContent += ` (${((Date.now() - t0) / 1000).toFixed(1)} s${flatHit && r === flatHit.r ? ', rätade ut kortet' : tilt ? ', rätade upp ' + Math.round(Math.abs(tilt)) + '°' : ''}${ocrMode ? ', ' + ocrMode + ' textläsare' : ''})`; }
     else { stopFx(); st.textContent = 'Kunde inte läsa av kortet. Prova bättre ljus och håll det rakt, eller skriv namn och nummer själv.'; st.classList.add('err'); }
   } catch (e){
     stopFx(); frame.classList.remove('busy');
@@ -2090,7 +2146,7 @@ async function finish(r, ranked, manual){
   if (ranked && ranked.length){
     const good = manual ? (strong(ranked) ? ranked.slice(0, 1) : ranked.filter(x => x.score >= ranked[0].score - .15).slice(0, 8)) : reliable(ranked);
     if (!good.length){ st.textContent = 'Kunde inte läsa av kortet säkert. Prova bättre ljus och håll det rakt, eller skriv namn och nummer själv.'; st.classList.add('err'); return; }
-    if (good.length === 1){ const c = good[0].card; $('#ocrName').value = c.name; $('#ocrNum').value = c.localId; $('#ocrTot').value = IDX.sets[c.set]?.official || $('#ocrTot').value; }
+    if (good.length === 1){ const c = good[0].card; noteSet(c.set); $('#ocrName').value = c.name; $('#ocrNum').value = c.localId; $('#ocrTot').value = IDX.sets[c.set]?.official || $('#ocrTot').value; }
     const n = await showCandidates(good, null);
     if (n === 1 && strong(ranked)){ list[0].scanHit = true; $('#results').hidden = true; showDetail(list[0]); }
     else if (n > 1) showPicker();
@@ -2267,6 +2323,8 @@ $('#wipeGo').addEventListener('click', () => {
 });
 
 loadFx(); loadSets(); renderColl(); loadDex().then(() => renderColl()).catch(() => {});
+// Förladda kortdatabasen, bildavtrycken och textläsaren i bakgrunden, så att första skanningen går lika fort som de följande
+setTimeout(() => { loadIndex(); loadArt(); getWorker().catch(() => {}); }, 1500);
 if ('serviceWorker' in navigator && location.protocol === 'https:' && location.hostname !== 'localhost') navigator.serviceWorker.register('sw.js').catch(() => {});
 window.addEventListener('pagehide', () => { stream?.getTracks().forEach(t => t.stop()); });
 })();
