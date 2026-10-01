@@ -291,7 +291,7 @@ dialog.sheet::backdrop{background:rgba(6,10,30,.62);backdrop-filter:blur(4px);-w
 .cgroup b{display:flex;align-items:center;gap:6px}
 .cr-s .setl{display:inline-flex}
 .cgroup span{font-size:.8rem;font-weight:800;color:var(--ink-2);white-space:nowrap}
-.crow{display:grid;grid-template-columns:54px 1fr auto;gap:12px;align-items:center;padding:10px;border-radius:16px;background:var(--surface-solid);border:2px solid var(--line)}
+.crow{cursor:pointer;display:grid;grid-template-columns:54px 1fr auto;gap:12px;align-items:center;padding:10px;border-radius:16px;background:var(--surface-solid);border:2px solid var(--line)}
 .crow img{width:54px;aspect-ratio:63/88;object-fit:contain;border-radius:6px;background:var(--surface-2)}
 .cr-p{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .cr-p b{font:400 1.25rem var(--display);font-variant-numeric:tabular-nums}
@@ -437,7 +437,7 @@ dialog a{color:var(--accent);font-weight:700}
         <div class="row" id="ocrFields" hidden>
           <label class="field ac"><span>Namn</span><input id="ocrName" autocomplete="off" placeholder="Skriv kortnamn"></label>
           <label class="field" style="flex:0 0 96px"><span>Nummer</span><input id="ocrNum" inputmode="numeric"></label>
-          <label class="field" style="flex:0 0 96px"><span>Av totalt</span><input id="ocrTot" inputmode="numeric"></label>
+          <input id="ocrTot" type="hidden">
           <button class="btn" id="ocrGo">Sök</button>
         </div>
         <p class="status" id="scanStatus" role="status"></p>
@@ -630,8 +630,14 @@ async function pool(items, n, fn){
 function imgSrcs(c, big){
   const i = String(c.id).lastIndexOf('-'), set = String(c.id).slice(0, i), num = String(c.id).slice(i + 1).replace(/^0+(?=\d)/, '');
   const s2 = set.replace(/^([a-z]+)0+(\d)/i, '$1$2').replace(/\./g, 'pt');
-  return [big ? (c.imgL || c.img) : c.img, `https://images.pokemontcg.io/${s2}/${num}${big ? '_hires' : ''}.png`].filter(Boolean);
+  const m = IMGMAP && IMGMAP[c.id], out = [big ? (c.imgL || c.img) : c.img];
+  // reservbilder från den dagliga prisfilen: exakt sökväg hos pokemontcg.io och TCGplayers produktbild (finns för nästan alla nya set)
+  if (m && m[0]) out.push(`https://images.pokemontcg.io/${m[0]}${big ? '_hires' : ''}.png`);
+  if (m && m[1]) out.push(`https://tcgplayer-cdn.tcgplayer.com/product/${m[1]}_${big ? 'in_1000x1000' : '200w'}.jpg`);
+  out.push(`https://images.pokemontcg.io/${s2}/${num}${big ? '_hires' : ''}.png`);
+  return [...new Set(out.filter(Boolean))];
 }
+let IMGMAP = null;
 window.imgFb = el => { const fb = (el.dataset.fb || '').split('|').filter(Boolean); if (fb.length){ el.src = fb.shift(); el.dataset.fb = fb.join('|'); } else el.onerror = null; };
 const imgTag = (c, big, alt) => { const l = imgSrcs(c, big); return `<img loading="lazy" src="${esc(l[0])}" data-fb="${esc(l.slice(1).join('|'))}" onerror="imgFb(this)" alt="${esc(alt)}">`; };
 
@@ -754,6 +760,7 @@ async function pbJson(key, file, ttl){
     const v = await r.json(); idb.set(key, { t: Date.now(), v }); return v;
   } catch { return c ? c.v : null; }
 }
+function loadImgMap(){ return pbJson('pb-img', 'img.json', 24 * 3600e3).then(j => { if (j && j.c) IMGMAP = j.c; }).catch(() => {}); }
 function loadBook(){ if (!bookP) bookP = pbJson('pb-latest', 'latest.json', 6 * 3600e3).then(b => b && b.c ? b : null); return bookP; }
 async function bookPrices(c){
   const b = await loadBook(), a = b && b.c[c.id]; if (!a) return null;
@@ -971,7 +978,7 @@ async function showDetail(c){
     delta = `<span class="delta ${up ? 'up' : 'down'}"><svg viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">${up ? '<path d="M6 1l5 9H1z"/>' : '<path d="M6 11L1 2h10z"/>'}</svg>${up ? '+' : '−'}${nf0.format(Math.abs(pct))} % mot snitt 30 dagar</span>`;
   }
   d.innerHTML = `<div class="detail">
-    <div class="art"><div class="holo" id="holo">${imgTag(c, true, c.name)}<span class="shine"></span></div><button class="btn yellow add-top" id="addColl" type="button">Lägg i samling</button></div>
+    <div class="art"><div class="holo" id="holo">${imgTag(c, true, c.name)}<span class="shine"></span></div><button class="btn yellow add-top" id="addColl" type="button">${c.owned ? 'Lägg till ett till (har ' + c.owned + ')' : 'Lägg i samling'}</button></div>
     <div>
       <div class="d-head"><div><h2>${esc(c.name)}</h2>
         <p class="meta">${esc(c.setName)} · ${esc(c.number)}${c.total ? '/' + esc(c.total) : ''}${c.artist ? ' · ' + esc(c.artist) : ''}</p></div>
@@ -1252,13 +1259,18 @@ function renderColl(){
         <div class="cr-n">${esc(x.name)}${esc(tags)} · #${esc(x.number)}${x.total ? '/' + esc(x.total) : ''}</div>
         <div class="cr-s">${collSort === 'set' ? '' : '<span class="setl">' + symImg(x) + '<span>' + (x.serie ? esc(x.serie) + ' › ' : '') + esc(x.set || '') + '</span></span>'}${added ? (collSort === 'set' ? '' : ' · ') + esc(added) : ''}${x.rarity ? ' · ' + esc(x.rarity) : ''}</div></div>${qty}`;
     } else {
-      d.className = 'tile'; d.style.cursor = 'default';
+      d.className = 'tile';
       d.innerHTML = `${imgTag(x, false, x.name)}<span class="n">${esc(x.name)}${esc(tags)}</span>
         <span class="setl">${symImg(x)}<span>${esc(x.set || '')}</span></span><span class="s">${x.serie ? esc(x.serie) + ' · ' : ''}#${esc(x.number)}${x.total ? '/' + esc(x.total) : ''}</span><span class="p">${kr((x.sek||0) * x.qty)}</span>${badge}${qty}`;
     }
     const [m, pl] = d.querySelectorAll('button');
     const upd = q => { const c = store.get('coll', {}); const k = x.key || x.id; if (q <= 0) delete c[k]; else c[k].qty = q; store.set('coll', c); histAdd(collTotals(Object.values(c)).now); renderColl(); };
     m.addEventListener('click', () => upd(x.qty - 1)); pl.addEventListener('click', () => upd(x.qty + 1));
+    // tryck på kortet: stor bild och all information (antal-knapparna fungerar som förut)
+    d.tabIndex = 0; d.setAttribute('role', 'button'); d.setAttribute('aria-label', 'Visa ' + x.name);
+    const open = () => showDetail({ id: x.id, name: x.name, number: x.number, total: x.total, setName: x.set, img: x.img, detailed: false, pick: x.holo ? 'holo' : 'auto', cond: x.cond || 'NM', owned: x.qty });
+    d.addEventListener('click', e => { if (!e.target.closest('.qty')) open(); });
+    d.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && !e.target.closest('.qty')){ e.preventDefault(); open(); } });
     g.appendChild(d);
   });
 }
@@ -1286,7 +1298,7 @@ async function loadSets(){
 $('#searchForm').addEventListener('submit', async e => {
   e.preventDefault();
   const st = $('#searchStatus'); st.className = 'status';
-  const name = $('#qName').value.trim(), number = $('#qNum').value.trim(), setId = $('#qSet').value;
+  const name = $('#qName').value.trim(), number = $('#qNum').value.split('/')[0].trim(), setId = $('#qSet').value;
   if (!name && !number && !setId){ st.textContent = 'Skriv ett namn eller välj ett set.'; st.classList.add('err'); return; }
   st.textContent = '';
   try { await runSearch({ name, number, setId }); }
@@ -2200,10 +2212,14 @@ async function finish(r, ranked, manual){
 }
 $('#reScan').addEventListener('click', async () => { if (!lastCanvas) return; const b = $('#reScan'); b.disabled = true; try { await runOcr(lastCanvas, true); } finally { b.disabled = false; b.textContent = 'Läs av igen'; } });
 attachSuggest($('#ocrName'), () => $('#ocrGo').click());
+// ändrar man namn eller nummer själv gäller inte längre totalen från avläsningen
+['#ocrName', '#ocrNum'].forEach(s => $(s).addEventListener('input', () => { $('#ocrTot').value = ''; }));
 attachSuggest($('#qName'), () => $('#searchForm').requestSubmit());
 $('#ocrName').addEventListener('keydown', e => { if (e.key === 'Enter' && $('#ocrName').parentElement.querySelector('.suggest').hidden){ e.preventDefault(); $('#ocrGo').click(); } });
 $('#ocrGo').addEventListener('click', async () => {
-  const r = { name: $('#ocrName').value.trim(), number: $('#ocrNum').value.trim(), total: $('#ocrTot').value.trim() };
+  // "109/182" i nummerfältet går också bra; totalen från avläsningen används annars i det tysta
+  const [num, tot] = $('#ocrNum').value.split('/').map(x => x.trim());
+  const r = { name: $('#ocrName').value.trim(), number: num || '', total: tot || $('#ocrTot').value.trim() };
   await loadIndex();
   const ranked = rankCandidates(r);
   if (ranked.length) return finish(r, ranked, true);
@@ -2211,7 +2227,8 @@ $('#ocrGo').addEventListener('click', async () => {
 });
 async function lookup(){
   const st = $('#scanStatus'); st.className = 'status'; st.textContent = 'Slår upp priset …';
-  const name = $('#ocrName').value.trim(), number = $('#ocrNum').value.trim(), total = $('#ocrTot').value.trim();
+  const [num, tot] = $('#ocrNum').value.split('/').map(x => x.trim());
+  const name = $('#ocrName').value.trim(), number = num || '', total = tot || $('#ocrTot').value.trim();
   try {
     let n = 0;
     for (const q of [{ name, number, total }, { name, total }, { name }]){
@@ -2367,6 +2384,7 @@ $('#wipeGo').addEventListener('click', () => {
 
 loadFx(); loadSets(); renderColl(); loadDex().then(() => renderColl()).catch(() => {});
 // Förladda kortdatabasen, bildavtrycken och textläsaren i bakgrunden, så att första skanningen går lika fort som de följande
+loadImgMap().then(() => { if (!$('#tab-coll').hidden) renderColl(); });
 setTimeout(() => { loadIndex(); loadArt(); loadBook(); getWorker().catch(() => {}); }, 1500);
 if ('serviceWorker' in navigator && location.protocol === 'https:' && location.hostname !== 'localhost') navigator.serviceWorker.register('sw.js').catch(() => {});
 window.addEventListener('pagehide', () => { stream?.getTracks().forEach(t => t.stop()); });

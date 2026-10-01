@@ -42,20 +42,25 @@ for (const c of cards){
 }
 const pickByName = (list, name) => list.length === 1 ? list[0] : list.find(c => normName(c.name) === normName(name)) || list.find(c => normName(name).startsWith(normName(c.name))) || null;
 
-const P = new Map();                 // TCGdex-id -> { e, e7, e30, eh, u, uh, ur, u1 }
+const P = new Map();                 // TCGdex-id -> { e, e7, e30, eh, u, uh, ur, u1 } från pokemontcg.io
+const T = new Map();                 // TCGdex-id -> { u, uh, ur, u1 } från TCGCSV (vinner över pokemontcg.io för TCGplayer)
 const entry = id => { if (!P.has(id)) P.set(id, {}); return P.get(id); };
+const IMG_P = new Map(), IMG_T = new Map();   // reservbilder: pokemontcg.io-sökväg och TCGplayer-produkt-id per TCGdex-id
+const t0 = Date.now(), PTCG_BUDGET = 30 * 60e3;   // pokemontcg.io kan vara mycket långsamt: sluta efter 30 min och använd det som hunnits hämtas
 
-// 2) pokemontcg.io: alla kort, 250 per sida
+// 2) pokemontcg.io: alla kort, 250 per sida (körs samtidigt som TCGCSV)
+async function ptcgAll(){
 let page = 1, total = Infinity, ptcgHits = 0;
 const ptHead = KEY ? { 'X-Api-Key': KEY } : {};
-while ((page - 1) * 250 < total){
-  const j = await json(`${PTCG}/cards?page=${page}&pageSize=250&select=id,name,number,set,cardmarket,tcgplayer`, ptHead);
+while ((page - 1) * 250 < total && Date.now() - t0 < PTCG_BUDGET){
+  const j = await json(`${PTCG}/cards?page=${page}&pageSize=250&select=id,name,number,set,images,cardmarket,tcgplayer`, ptHead);
   if (!j || !Array.isArray(j.data)){ console.log(`pokemontcg.io: sida ${page} saknas, hoppar vidare`); if (page > 200) break; page++; continue; }
   total = j.totalCount || 0;
   for (const d of j.data){
     let id = byPtcgId.get(`${d.set?.id}-${numKey(d.number)}`);
     if (!id){ const l = bySetNum.get(normName(d.set?.name) + '|' + numKey(d.number)); const hit = l && pickByName(l, d.name); if (hit) id = hit.id; }
     if (!id) continue;
+    const im = String(d.images?.small || '').match(/images\.pokemontcg\.io\/(.+)\.png$/); if (im) IMG_P.set(id, im[1]);
     const e = entry(id), cm = d.cardmarket?.prices, tp = d.tcgplayer?.prices;
     if (cm){ e.e = r2(cm.trendPrice || cm.averageSellPrice || cm.lowPrice); e.e7 = r2(cm.avg7); e.e30 = r2(cm.avg30); e.eh = r2(cm.reverseHoloTrend || cm.reverseHoloSell); }
     if (tp){
@@ -67,9 +72,11 @@ while ((page - 1) * 250 < total){
   if (page % 10 === 0) console.log(`pokemontcg.io: sida ${page}, ${ptcgHits} kort kopplade`);
   page++; await sleep(KEY ? 150 : 1200);
 }
-console.log(`pokemontcg.io: ${ptcgHits} kort kopplade`);
+console.log(`pokemontcg.io: ${ptcgHits} kort kopplade (${page - 1} sidor, ${Math.round((Date.now() - t0) / 1000)} s)`);
+}
 
 // 3) TCGCSV: TCGplayers priser för varje set (nyare och dagligen uppdaterade, skriver över TCGplayer-delen)
+async function tcsvAll(){
 const tcsvKey = n => normName(String(n || '').replace(/^[^:]*:\s*/, ''));
 const groups = (await json(`${TCSV}/groups`))?.results || [];
 const setKeys = sets.map(s => ({ id: s.id, k: normName(s.name) }));
@@ -86,14 +93,18 @@ for (const g of groups){
   for (const p of prods.results){
     const num = (p.extendedData || []).find(e => e.name === 'Number')?.value; if (!num) continue;
     const l = bySetNum.get(s.k + '|' + numKey(num)); const hit = l && pickByName(l, p.cleanName || p.name); if (!hit) continue;
-    const rows = price.get(p.productId) || [], e = entry(hit.id);
+    if (!IMG_T.has(hit.id)) IMG_T.set(hit.id, p.productId);
+    const rows = price.get(p.productId) || [];
     const v = re => { const x = rows.find(r => re.test(sub(r.subTypeName))); return x ? r2(x.marketPrice || x.midPrice || x.lowPrice) : 0; };
     const u = v(/^normal$|^unlimited$/), uh = v(/^holofoil$|^unlimited holofoil$/), ur = v(/reverse/), u1 = v(/1st edition/);
-    if (u || uh || ur || u1){ Object.assign(e, { u: u || e.u || 0, uh: uh || e.uh || 0, ur: ur || e.ur || 0, u1: u1 || e.u1 || 0 }); tcsvHits++; }
+    if (u || uh || ur || u1){ T.set(hit.id, { u, uh, ur, u1 }); tcsvHits++; }
   }
   await sleep(150);
 }
-console.log(`TCGCSV: ${tcsvHits} kort med pris (${groups.length} grupper)`);
+console.log(`TCGCSV: ${tcsvHits} kort med pris (${groups.length} grupper, ${Math.round((Date.now() - t0) / 1000)} s)`);
+}
+await Promise.all([ptcgAll(), tcsvAll()]);
+for (const [id, t] of T){ const e = entry(id); for (const k of ['u', 'uh', 'ur', 'u1']) if (t[k]) e[k] = t[k]; }
 if (P.size < cards.length * 0.3) throw new Error(`För få priser (${P.size}/${cards.length}), sparar inte`);
 
 // 4) Skriv latest.json
@@ -106,6 +117,12 @@ for (const [id, e] of P){
 fs.mkdirSync(path.join(OUT, 'hist'), { recursive: true });
 fs.writeFileSync(path.join(OUT, 'latest.json'), JSON.stringify(latest));
 console.log(`latest.json: ${Object.keys(latest.c).length} kort med pris`);
+
+// 4b) Reservbilder för kort som saknar bild hos TCGdex (nya set får ofta bilder sent): img.json { c: { id: ["sv9/1", 123456] } }
+const img = { d: TODAY, c: {} };
+for (const c of cards) if (!c.image){ const p = IMG_P.get(c.id) || 0, t = IMG_T.get(c.id) || 0; if (p || t) img.c[c.id] = [p, t]; }
+fs.writeFileSync(path.join(OUT, 'img.json'), JSON.stringify(img));
+console.log(`img.json: ${Object.keys(img.c).length} kort utan TCGdex-bild fick reservbild (av ${cards.filter(c => !c.image).length})`);
 
 // 5) Historik per set: lägg till dagens pris (ett värde i EUR och ett i USD, i cent) och behåll de senaste HIST_DAYS dagarna
 const bySet = new Map();
