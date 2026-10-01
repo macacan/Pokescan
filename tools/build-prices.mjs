@@ -42,13 +42,16 @@ for (const c of cards){
 }
 const pickByName = (list, name) => list.length === 1 ? list[0] : list.find(c => normName(c.name) === normName(name)) || list.find(c => normName(name).startsWith(normName(c.name))) || null;
 
-const P = new Map();                 // TCGdex-id -> { e, e7, e30, eh, u, uh, ur, u1 }
+const P = new Map();                 // TCGdex-id -> { e, e7, e30, eh, u, uh, ur, u1 } från pokemontcg.io
+const T = new Map();                 // TCGdex-id -> { u, uh, ur, u1 } från TCGCSV (vinner över pokemontcg.io för TCGplayer)
 const entry = id => { if (!P.has(id)) P.set(id, {}); return P.get(id); };
+const t0 = Date.now(), PTCG_BUDGET = 30 * 60e3;   // pokemontcg.io kan vara mycket långsamt: sluta efter 30 min och använd det som hunnits hämtas
 
-// 2) pokemontcg.io: alla kort, 250 per sida
+// 2) pokemontcg.io: alla kort, 250 per sida (körs samtidigt som TCGCSV)
+async function ptcgAll(){
 let page = 1, total = Infinity, ptcgHits = 0;
 const ptHead = KEY ? { 'X-Api-Key': KEY } : {};
-while ((page - 1) * 250 < total){
+while ((page - 1) * 250 < total && Date.now() - t0 < PTCG_BUDGET){
   const j = await json(`${PTCG}/cards?page=${page}&pageSize=250&select=id,name,number,set,cardmarket,tcgplayer`, ptHead);
   if (!j || !Array.isArray(j.data)){ console.log(`pokemontcg.io: sida ${page} saknas, hoppar vidare`); if (page > 200) break; page++; continue; }
   total = j.totalCount || 0;
@@ -67,9 +70,11 @@ while ((page - 1) * 250 < total){
   if (page % 10 === 0) console.log(`pokemontcg.io: sida ${page}, ${ptcgHits} kort kopplade`);
   page++; await sleep(KEY ? 150 : 1200);
 }
-console.log(`pokemontcg.io: ${ptcgHits} kort kopplade`);
+console.log(`pokemontcg.io: ${ptcgHits} kort kopplade (${page - 1} sidor, ${Math.round((Date.now() - t0) / 1000)} s)`);
+}
 
 // 3) TCGCSV: TCGplayers priser för varje set (nyare och dagligen uppdaterade, skriver över TCGplayer-delen)
+async function tcsvAll(){
 const tcsvKey = n => normName(String(n || '').replace(/^[^:]*:\s*/, ''));
 const groups = (await json(`${TCSV}/groups`))?.results || [];
 const setKeys = sets.map(s => ({ id: s.id, k: normName(s.name) }));
@@ -86,14 +91,17 @@ for (const g of groups){
   for (const p of prods.results){
     const num = (p.extendedData || []).find(e => e.name === 'Number')?.value; if (!num) continue;
     const l = bySetNum.get(s.k + '|' + numKey(num)); const hit = l && pickByName(l, p.cleanName || p.name); if (!hit) continue;
-    const rows = price.get(p.productId) || [], e = entry(hit.id);
+    const rows = price.get(p.productId) || [];
     const v = re => { const x = rows.find(r => re.test(sub(r.subTypeName))); return x ? r2(x.marketPrice || x.midPrice || x.lowPrice) : 0; };
     const u = v(/^normal$|^unlimited$/), uh = v(/^holofoil$|^unlimited holofoil$/), ur = v(/reverse/), u1 = v(/1st edition/);
-    if (u || uh || ur || u1){ Object.assign(e, { u: u || e.u || 0, uh: uh || e.uh || 0, ur: ur || e.ur || 0, u1: u1 || e.u1 || 0 }); tcsvHits++; }
+    if (u || uh || ur || u1){ T.set(hit.id, { u, uh, ur, u1 }); tcsvHits++; }
   }
   await sleep(150);
 }
-console.log(`TCGCSV: ${tcsvHits} kort med pris (${groups.length} grupper)`);
+console.log(`TCGCSV: ${tcsvHits} kort med pris (${groups.length} grupper, ${Math.round((Date.now() - t0) / 1000)} s)`);
+}
+await Promise.all([ptcgAll(), tcsvAll()]);
+for (const [id, t] of T){ const e = entry(id); for (const k of ['u', 'uh', 'ur', 'u1']) if (t[k]) e[k] = t[k]; }
 if (P.size < cards.length * 0.3) throw new Error(`För få priser (${P.size}/${cards.length}), sparar inte`);
 
 // 4) Skriv latest.json
