@@ -286,6 +286,10 @@ dialog.sheet::backdrop{background:rgba(6,10,30,.62);backdrop-filter:blur(4px);-w
 .cgroup:first-child{margin-top:0}
 .cgroup b{font:400 1.15rem var(--display);letter-spacing:.02em}
 .cgroup small{display:block;font-size:.72rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.setl{display:flex;align-items:center;gap:5px;font-size:.78rem;font-weight:800;color:var(--ink-2);line-height:1.2}
+.setl img,.cgroup b img{width:18px;height:18px;object-fit:contain;flex:none}
+.cgroup b{display:flex;align-items:center;gap:6px}
+.cr-s .setl{display:inline-flex}
 .cgroup span{font-size:.8rem;font-weight:800;color:var(--ink-2);white-space:nowrap}
 .crow{display:grid;grid-template-columns:54px 1fr auto;gap:12px;align-items:center;padding:10px;border-radius:16px;background:var(--surface-solid);border:2px solid var(--line)}
 .crow img{width:54px;aspect-ratio:63/88;object-fit:contain;border-radius:6px;background:var(--surface-2)}
@@ -480,7 +484,7 @@ dialog a{color:var(--accent);font-weight:700}
       <div class="seg pf-range" id="pfRange" role="group" aria-label="Period" hidden><button type="button" data-r="7D">7D</button><button type="button" data-r="1M">1M</button><button type="button" data-r="3M">3M</button><button type="button" data-r="6M">6M</button><button type="button" data-r="MAX">MAX</button></div>
     </div>
     <div class="pf-bar" id="pfBar">
-      <label class="pf-sort"><span class="eyebrow">Sortera</span><select id="collSort"><option value="recent">Senast tillagd</option><option value="name">Namn</option><option value="value">Högst värde</option><option value="set">Set (grupperat)</option></select></label>
+      <label class="pf-sort"><span class="eyebrow">Sortera</span><select id="collSort"><option value="recent">Senast tillagd</option><option value="name">Namn</option><option value="value">Högst värde</option><option value="set">Set (grupperat)</option><option value="dex">Pokémon (grupperat)</option></select></label>
       <div class="seg" id="collLayout" role="group" aria-label="Visning"><button type="button" data-l="list">Lista</button><button type="button" data-l="grid">Rutnät</button></div>
       <button class="btn quiet" id="exportCsv">CSV</button>
     </div>
@@ -599,7 +603,7 @@ const brief = b => ({ id: b.id, name: b.name, number: b.localId, img: b.image ? 
 function norm(d){
   return { id: d.id, name: d.name, number: d.localId, rarity: d.rarity, artist: d.illustrator, setName: d.set?.name,
     total: d.set?.cardCount?.official, img: d.image ? d.image + '/low.webp' : '', imgL: d.image ? d.image + '/high.webp' : '',
-    dex: d.dexId || [], category: d.category, hp: d.hp, types: d.types || [], stage: d.stage, variants: d.variants || {}, cm: d.pricing?.cardmarket || null, tp: d.pricing?.tcgplayer || null, detailed: true };
+    setSymbol: d.set?.symbol ? d.set.symbol + '.png' : '', dex: d.dexId || [], category: d.category, hp: d.hp, types: d.types || [], stage: d.stage, variants: d.variants || {}, cm: d.pricing?.cardmarket || null, tp: d.pricing?.tcgplayer || null, detailed: true };
 }
 async function findBrief({ name, number, setId }){
   let l;
@@ -1069,7 +1073,7 @@ function drawChart(host, s){
 function addToColl(c){
   const coll = store.get('coll', {}), p = prices(c), key = c.id + (p.holo ? '#holo' : '') + (p.cond !== 'NM' ? '#' + p.cond : ''), e = coll[key] || { qty: 0 };
   const at = k => p.series.find(x => x[0] === k)?.[2] ?? null;
-  coll[key] = { id: c.id, dex: c.dex || [], key, holo: p.holo, cond: p.cond, qty: e.qty + 1, name: c.name, set: c.setName, number: c.number, total: c.total, img: c.img,
+  coll[key] = { id: c.id, dex: c.dex || [], sym: c.setSymbol || '', key, holo: p.holo, cond: p.cond, qty: e.qty + 1, name: c.name, set: c.setName, number: c.number, total: c.total, img: c.img,
     sek: p.main, avg7: at(7), avg30: at(30), t: Date.now(), added: e.added || new Date().toISOString(), rarity: c.rarity };
   store.set('coll', coll); histAdd(collTotals(Object.values(coll)).now);
   return key;
@@ -1126,11 +1130,11 @@ async function refreshColl(){
     } catch {}
   });
   // Serie och utgivningsdatum per set (för gruppering)
-  const sids = [...new Set(Object.values(coll).filter(x => !x.serie).map(setIdOf))];
+  const sids = [...new Set(Object.values(coll).filter(x => !x.serie || x.sym == null).map(setIdOf))];
   await pool(sids, 3, async sid => {
     try {
       const st = await api('/sets/' + encodeURIComponent(sid));
-      Object.values(coll).filter(x => setIdOf(x) === sid).forEach(x => { x.serie = st.serie?.name || ''; x.setDate = st.releaseDate || ''; if (!x.set && st.name) x.set = st.name; });
+      Object.values(coll).filter(x => setIdOf(x) === sid).forEach(x => { x.serie = st.serie?.name || ''; x.setDate = st.releaseDate || ''; x.sym = x.sym || (st.symbol ? st.symbol + '.png' : ''); if (!x.set && st.name) x.set = st.name; });
     } catch {}
   });
   store.set('coll', coll); histAdd(collTotals(Object.values(coll)).now); renderColl();
@@ -1157,16 +1161,34 @@ function renderColl(){
   }
   // lista
   const numKey = x => { const n = parseInt(x.number, 10); return Number.isNaN(n) ? 1e6 : n; };
-  const sorted = items.slice().sort((a, b) => collSort === 'set' ? ((b.setDate || '').localeCompare(a.setDate || '') || String(a.set || '').localeCompare(String(b.set || ''), 'sv') || numKey(a) - numKey(b)) : collSort === 'name' ? a.name.localeCompare(b.name, 'sv') : collSort === 'value' ? (b.sek || 0) * b.qty - (a.sek || 0) * a.qty : String(b.added || '').localeCompare(String(a.added || '')));
+  // art: vilken Pokémon kortet visar (dex-id från kortet, annars namnet), för gruppering med många kort av samma Pokémon från olika set
+  const species = x => {
+    let id = Array.isArray(x.dex) && x.dex.length ? x.dex[0] : 0;
+    if (!id && DEX && DEX.byLen){ const k = ' ' + normName(x.name) + ' ', hit = DEX.byLen.find(d => k.includes(' ' + d.key + ' ')); if (hit) id = hit.id; }
+    const d = id && DEX ? DEX.find(z => z.id === id) : null;
+    return { id: id || 0, name: d ? d.name : nameCore(normName(x.name)) };
+  };
+  const spc = new Map(items.map(x => [x, species(x)]));
+  const byDate = (a, b) => (b.setDate || '').localeCompare(a.setDate || '');
+  const sorted = items.slice().sort((a, b) => collSort === 'set' ? (byDate(a, b) || String(a.set || '').localeCompare(String(b.set || ''), 'sv') || numKey(a) - numKey(b))
+    : collSort === 'dex' ? ((spc.get(a).id || 1e6) - (spc.get(b).id || 1e6) || spc.get(a).name.localeCompare(spc.get(b).name, 'sv') || byDate(a, b) || numKey(a) - numKey(b))
+    : collSort === 'name' ? a.name.localeCompare(b.name, 'sv') : collSort === 'value' ? (b.sek || 0) * b.qty - (a.sek || 0) * a.qty : String(b.added || '').localeCompare(String(a.added || '')));
   document.querySelectorAll('#collLayout button').forEach(b => b.setAttribute('aria-pressed', b.dataset.l === collLayout));
   $('#collSort').value = collSort;
   const g = $('#collGrid'); g.innerHTML = ''; g.className = collLayout === 'list' ? 'clist' : 'grid grid2';
-  let lastSet = null;
+  const gkey = x => collSort === 'set' ? setIdOf(x) : collSort === 'dex' ? (spc.get(x).id || spc.get(x).name) : null;
+  const symImg = x => x.sym ? `<img class="sym" src="${esc(x.sym)}" alt="" onerror="this.remove()">` : '';
+  let lastGroup = null;
   sorted.forEach(x => {
-    if (collSort === 'set' && setIdOf(x) !== lastSet){
-      lastSet = setIdOf(x);
-      const grp = sorted.filter(y => setIdOf(y) === lastSet), h = document.createElement('div'), v = grp.reduce((t, y) => t + (y.sek || 0) * y.qty, 0), q = grp.reduce((t, y) => t + y.qty, 0);
-      h.className = 'cgroup'; h.innerHTML = `<div>${x.serie ? `<small>${esc(x.serie)}</small>` : ''}<b>${esc(x.set || lastSet)}</b></div><span>${q} kort · ${kr(v)}</span>`;
+    const gk = gkey(x);
+    if (gk !== null && gk !== lastGroup){
+      lastGroup = gk;
+      const grp = sorted.filter(y => gkey(y) === gk), h = document.createElement('div'), v = grp.reduce((t, y) => t + (y.sek || 0) * y.qty, 0), q = grp.reduce((t, y) => t + y.qty, 0);
+      const sets = new Set(grp.map(setIdOf)).size;
+      h.className = 'cgroup';
+      h.innerHTML = collSort === 'set'
+        ? `<div>${x.serie ? `<small>${esc(x.serie)}</small>` : ''}<b>${symImg(x)}${esc(x.set || gk)}</b></div><span>${q} kort · ${kr(v)}</span>`
+        : `<div><small>${spc.get(x).id ? '#' + String(spc.get(x).id).padStart(4, '0') + ' · ' : ''}${sets} ${sets === 1 ? 'set' : 'olika set'}</small><b>${esc(spc.get(x).name)}</b></div><span>${q} kort · ${kr(v)}</span>`;
       g.appendChild(h);
     }
     const d = document.createElement('div'), tags = (x.holo ? ' ✦ Holo' : '') + (x.cond && x.cond !== 'NM' ? ' · ' + x.cond : '');
@@ -1177,11 +1199,11 @@ function renderColl(){
       d.className = 'crow';
       d.innerHTML = `${imgTag(x, false, x.name)}<div><div class="cr-p"><b>${kr((x.sek||0) * x.qty)}</b>${badge}</div>
         <div class="cr-n">${esc(x.name)}${esc(tags)} · #${esc(x.number)}${x.total ? '/' + esc(x.total) : ''}</div>
-        <div class="cr-s">${collSort === 'set' ? '' : (x.serie ? esc(x.serie) + ' › ' : '') + esc(x.set || '')}${added ? (collSort === 'set' ? '' : ' · ') + esc(added) : ''}${x.rarity ? ' · ' + esc(x.rarity) : ''}</div></div>${qty}`;
+        <div class="cr-s">${collSort === 'set' ? '' : '<span class="setl">' + symImg(x) + '<span>' + (x.serie ? esc(x.serie) + ' › ' : '') + esc(x.set || '') + '</span></span>'}${added ? (collSort === 'set' ? '' : ' · ') + esc(added) : ''}${x.rarity ? ' · ' + esc(x.rarity) : ''}</div></div>${qty}`;
     } else {
       d.className = 'tile'; d.style.cursor = 'default';
       d.innerHTML = `${imgTag(x, false, x.name)}<span class="n">${esc(x.name)}${esc(tags)}</span>
-        <span class="s">${esc(x.set)} · ${esc(x.number)}${x.total ? '/' + esc(x.total) : ''}</span><span class="p">${kr((x.sek||0) * x.qty)}</span>${badge}${qty}`;
+        <span class="setl">${symImg(x)}<span>${esc(x.set || '')}</span></span><span class="s">${x.serie ? esc(x.serie) + ' · ' : ''}#${esc(x.number)}${x.total ? '/' + esc(x.total) : ''}</span><span class="p">${kr((x.sek||0) * x.qty)}</span>${badge}${qty}`;
     }
     const [m, pl] = d.querySelectorAll('button');
     const upd = q => { const c = store.get('coll', {}); const k = x.key || x.id; if (q <= 0) delete c[k]; else c[k].qty = q; store.set('coll', c); histAdd(collTotals(Object.values(c)).now); renderColl(); };
@@ -2236,7 +2258,7 @@ $('#wipeGo').addEventListener('click', () => {
   $('#wipeDlg').close();
 });
 
-loadFx(); loadSets(); renderColl();
+loadFx(); loadSets(); renderColl(); loadDex().then(() => renderColl()).catch(() => {});
 if ('serviceWorker' in navigator && location.protocol === 'https:' && location.hostname !== 'localhost') navigator.serviceWorker.register('sw.js').catch(() => {});
 window.addEventListener('pagehide', () => { stream?.getTracks().forEach(t => t.stop()); });
 })();
