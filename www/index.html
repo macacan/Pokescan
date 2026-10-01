@@ -280,6 +280,11 @@ dialog.sheet::backdrop{background:rgba(6,10,30,.62);backdrop-filter:blur(4px);-w
 .pf-sort select{min-height:40px;padding:6px 12px;font-size:.9rem}
 .pf-bar .btn{min-height:40px;padding:8px 14px;font-size:.85rem}
 .clist{display:grid;gap:10px}
+.cgroup{grid-column:1/-1;display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin:14px 2px 0;padding:0 2px 6px;border-bottom:2px solid var(--line)}
+.cgroup:first-child{margin-top:0}
+.cgroup b{font:400 1.15rem var(--display);letter-spacing:.02em}
+.cgroup small{display:block;font-size:.72rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.cgroup span{font-size:.8rem;font-weight:800;color:var(--ink-2);white-space:nowrap}
 .crow{display:grid;grid-template-columns:54px 1fr auto;gap:12px;align-items:center;padding:10px;border-radius:16px;background:var(--surface-solid);border:2px solid var(--line)}
 .crow img{width:54px;aspect-ratio:63/88;object-fit:contain;border-radius:6px;background:var(--surface-2)}
 .cr-p{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -473,7 +478,7 @@ dialog a{color:var(--accent);font-weight:700}
       <div class="seg pf-range" id="pfRange" role="group" aria-label="Period" hidden><button type="button" data-r="7D">7D</button><button type="button" data-r="1M">1M</button><button type="button" data-r="3M">3M</button><button type="button" data-r="6M">6M</button><button type="button" data-r="MAX">MAX</button></div>
     </div>
     <div class="pf-bar" id="pfBar">
-      <label class="pf-sort"><span class="eyebrow">Sortera</span><select id="collSort"><option value="recent">Senast tillagd</option><option value="name">Namn</option><option value="value">Högst värde</option></select></label>
+      <label class="pf-sort"><span class="eyebrow">Sortera</span><select id="collSort"><option value="recent">Senast tillagd</option><option value="name">Namn</option><option value="value">Högst värde</option><option value="set">Set (grupperat)</option></select></label>
       <div class="seg" id="collLayout" role="group" aria-label="Visning"><button type="button" data-l="list">Lista</button><button type="button" data-l="grid">Rutnät</button></div>
       <button class="btn quiet" id="exportCsv">CSV</button>
     </div>
@@ -1022,7 +1027,6 @@ let collFresh = false;
 async function refreshColl(){
   if (collFresh) return; collFresh = true;
   const coll = store.get('coll', {}), now = Date.now(), todo = Object.values(coll).filter(x => !x.t || now - x.t > 12 * 3600e3);
-  if (!todo.length){ histAdd(collTotals(Object.values(coll)).now); return; }
   await pool(todo, 3, async x => {
     try {
       const c = norm(await api('/cards/' + encodeURIComponent(x.id))); await fillPrice(c); c.pick = x.holo ? 'holo' : 'auto'; c.cond = x.cond || 'NM';
@@ -1030,8 +1034,17 @@ async function refreshColl(){
       if (p.main != null){ x.sek = p.main; x.avg7 = at(7); x.avg30 = at(30); x.t = now; if (c.dex?.length) x.dex = c.dex; x.rarity = c.rarity; }
     } catch {}
   });
+  // Serie och utgivningsdatum per set (för gruppering)
+  const sids = [...new Set(Object.values(coll).filter(x => !x.serie).map(setIdOf))];
+  await pool(sids, 3, async sid => {
+    try {
+      const st = await api('/sets/' + encodeURIComponent(sid));
+      Object.values(coll).filter(x => setIdOf(x) === sid).forEach(x => { x.serie = st.serie?.name || ''; x.setDate = st.releaseDate || ''; if (!x.set && st.name) x.set = st.name; });
+    } catch {}
+  });
   store.set('coll', coll); histAdd(collTotals(Object.values(coll)).now); renderColl();
 }
+const setIdOf = x => { const i = String(x.id).lastIndexOf('-'); return i > 0 ? String(x.id).slice(0, i) : String(x.id); };
 function renderColl(){
   const items = Object.values(store.get('coll', {}));
   const n = items.reduce((s,x) => s + x.qty, 0), T = collTotals(items);
@@ -1052,11 +1065,19 @@ function renderColl(){
     drawPortfolio(ch, pts, up);
   }
   // lista
-  const sorted = items.slice().sort((a, b) => collSort === 'name' ? a.name.localeCompare(b.name, 'sv') : collSort === 'value' ? (b.sek || 0) * b.qty - (a.sek || 0) * a.qty : String(b.added || '').localeCompare(String(a.added || '')));
+  const numKey = x => { const n = parseInt(x.number, 10); return Number.isNaN(n) ? 1e6 : n; };
+  const sorted = items.slice().sort((a, b) => collSort === 'set' ? ((b.setDate || '').localeCompare(a.setDate || '') || String(a.set || '').localeCompare(String(b.set || ''), 'sv') || numKey(a) - numKey(b)) : collSort === 'name' ? a.name.localeCompare(b.name, 'sv') : collSort === 'value' ? (b.sek || 0) * b.qty - (a.sek || 0) * a.qty : String(b.added || '').localeCompare(String(a.added || '')));
   document.querySelectorAll('#collLayout button').forEach(b => b.setAttribute('aria-pressed', b.dataset.l === collLayout));
   $('#collSort').value = collSort;
   const g = $('#collGrid'); g.innerHTML = ''; g.className = collLayout === 'list' ? 'clist' : 'grid';
+  let lastSet = null;
   sorted.forEach(x => {
+    if (collSort === 'set' && setIdOf(x) !== lastSet){
+      lastSet = setIdOf(x);
+      const grp = sorted.filter(y => setIdOf(y) === lastSet), h = document.createElement('div'), v = grp.reduce((t, y) => t + (y.sek || 0) * y.qty, 0), q = grp.reduce((t, y) => t + y.qty, 0);
+      h.className = 'cgroup'; h.innerHTML = `<div>${x.serie ? `<small>${esc(x.serie)}</small>` : ''}<b>${esc(x.set || lastSet)}</b></div><span>${q} kort · ${kr(v)}</span>`;
+      g.appendChild(h);
+    }
     const d = document.createElement('div'), tags = (x.holo ? ' ✦ Holo' : '') + (x.cond && x.cond !== 'NM' ? ' · ' + x.cond : '');
     const ch30 = x.avg30 ? (x.sek / x.avg30 - 1) * 100 : null, badge = ch30 != null && Math.abs(ch30) >= .5 ? `<span class="delta ${ch30 >= 0 ? 'up' : 'down'}">${ch30 >= 0 ? '▲' : '▼'} ${nf0.format(Math.abs(Math.round(ch30)))} %</span>` : '';
     const added = x.added ? new Date(x.added).toLocaleDateString('sv-SE') : '';
@@ -1065,7 +1086,7 @@ function renderColl(){
       d.className = 'crow';
       d.innerHTML = `<img src="${esc(x.img)}" alt="${esc(x.name)}"><div><div class="cr-p"><b>${kr((x.sek||0) * x.qty)}</b>${badge}</div>
         <div class="cr-n">${esc(x.name)}${esc(tags)} · #${esc(x.number)}${x.total ? '/' + esc(x.total) : ''}</div>
-        <div class="cr-s">${esc(x.set || '')}${added ? ' · ' + esc(added) : ''}${x.rarity ? ' · ' + esc(x.rarity) : ''}</div></div>${qty}`;
+        <div class="cr-s">${collSort === 'set' ? '' : (x.serie ? esc(x.serie) + ' › ' : '') + esc(x.set || '')}${added ? (collSort === 'set' ? '' : ' · ') + esc(added) : ''}${x.rarity ? ' · ' + esc(x.rarity) : ''}</div></div>${qty}`;
     } else {
       d.className = 'tile'; d.style.cursor = 'default';
       d.innerHTML = `<img src="${esc(x.img)}" alt="${esc(x.name)}"><span class="n">${esc(x.name)}${esc(tags)}</span>
@@ -1186,13 +1207,13 @@ function rankCandidates({ name, number, total, raw }){
   if (!IDX.cards) return [];
   const n = normName(name), num = String(number || '').toUpperCase(), tot = total ? parseInt(total, 10) : null;
   const runs = digitRuns(raw);
-  const out = [];
+  const out = [], nsCache = new Map();
   for (const c of IDX.cards){
     const numOk = num && sameNum(c.localId, num);
     if (num && !numOk && !n) continue;
     const s = IDX.sets[c.set] || {};
     const totOk = tot != null && s.official === tot; // tryckt nummer är alltid NNN/officiellt antal
-    const nsim = n ? nameSim(n, c.key) : 0;
+    let nsim = 0; if (n){ nsim = nsCache.get(c.key); if (nsim === undefined){ nsim = nameSim(n, c.key); nsCache.set(c.key, nsim); } }
     if (!numOk && nsim < .72) continue;
     let score = nsim * .55 + (numOk ? .3 : 0) + (totOk ? .25 : 0);
     if (!n && numOk) score += .2;
@@ -1252,7 +1273,7 @@ function stopCamera(){
   $('#startCam').textContent = 'Kamera';
 }
 $('#startCam').addEventListener('click', async () => {
-  getWorker().catch(() => {}); getWorker2().catch(() => {});
+  getWorker().catch(() => {});
   const st = $('#scanStatus'); st.className = 'status';
   if (stream){ stopCamera(); video.hidden = true; frame.hidden = true; $('#vfHint').hidden = false; st.textContent = ''; return; }
   try {
@@ -1393,7 +1414,7 @@ function startAuto(){
         if (lum < 45){ chip('För mörkt – tänd blixten eller gå till bättre ljus', true); }
         else if (sharp < 40){ chip('Håll still – bilden är suddig', true); }
         else if (!IDX.cards){ chip('Laddar kortdatabasen …'); }
-        else if (!worker || !worker2){ chip('Laddar textläsaren …'); getWorker().catch(() => {}); getWorker2().catch(() => {}); }
+        else if (!worker){ chip('Laddar textläsaren …'); getWorker().catch(() => {}); }
         else {
           chip(lum > 225 ? 'Mycket ljust – undvik reflexer, luta kortet lite' : 'Läser av …', lum > 225);
           const up = upscale(fr, 1300);
@@ -1455,7 +1476,7 @@ $('#file').addEventListener('change', e => {
     shot.src = img.src; shot.classList.add('fit'); shot.hidden = false; video.hidden = true; frame.hidden = true; $('#vfHint').hidden = true;
     lastCanvas = c; $('#reScan').hidden = false; $('#ocrFields').hidden = false; $('#reScan').textContent = 'Läs av kort';
     const st = $('#scanStatus'); st.className = 'status'; st.textContent = 'Bilden är inläst. Tryck på Läs av kort.';
-    loadIndex(); loadArt(); getWorker().catch(() => {}); getWorker2().catch(() => {});
+    loadIndex(); loadArt(); getWorker().catch(() => {});
   };
   img.onerror = () => { const st = $('#scanStatus'); st.className = 'status err'; st.textContent = 'Bilden kunde inte öppnas. Prova ett annat foto (JPG eller PNG).'; };
   img.src = URL.createObjectURL(f);
@@ -1640,43 +1661,33 @@ async function ocr(w, img, psm, wl){
 }
 /* Läser namn och nummer ur en kortbild. quick = färre varianter (för autoläge). */
 async function readCard(canvas, quick){
-  const [w, w2] = await Promise.all([getWorker(), getWorker2()]), W = canvas.width, H = canvas.height;
+  const w = await getWorker(), W = canvas.width, H = canvas.height;
   const res = { name: '', number: '', total: '', raw: '' };
   const numWL = '0123456789/ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  // Numret (arbetare 1) och namnet (arbetare 2) läses samtidigt.
-  // 1) En enda bred remsa nere till vänster täcker både Sword & Shield- och Scarlet & Violet-layouten.
-  // 2) Smalare remsor och höger sida (äldre kort) bara om det behövs.
-  const numTask = async () => {
-    const out = { number: '', total: '', raw: '', found: false };
-    const regions = [[0, H * .84, W * .55, H * .16, 200, '6'], [0, H * .865, W * .52, H * .075, 160, '6'], [0, H * .91, W * .52, H * .075, 160, '6'], [W * .45, H * .9, W * .55, H * .1, 170, '6']];
-    if (!quick) regions.push([0, H * .85, W * .6, H * .15, 220, '6'], [W * .4, H * .88, W * .6, H * .12, 180, '6']);
-    for (const [x, y, rw, rh, th, psm] of regions) for (const m of (quick && th !== 200 ? ['bin', 'adp'] : ['bin', 'adp', 'gray', 'inv'])){
-      const r = await ocr(w, prep(canvas, x, y, rw, rh, th, m), psm, numWL);
-      out.raw += ' ' + r.text;
-      const n = parseNumber(r.text);
-      if (n && validNum(n)){ out.number = n.number; out.total = n.total; out.found = true; return out; }
-      if (n && n.number && !out.number){ out.number = n.number; out.total = n.total; }
-    }
-    return out;
-  };
-  const nameTask = async () => {
-    // Namnet sitter överst, på äldre kort efter "BASIC"/"STAGE". Flera band och valet styrs av likhet med riktiga kortnamn.
-    const bands = [[W * .04, H * .025, W * .7, H * .09, 110], [W * .16, H * .03, W * .58, H * .08, 120], [W * .04, H * .045, W * .68, H * .095, 110]];
-    const modes = quick ? ['bin', 'adp'] : ['bin', 'adp', 'inv', 'gray'];
-    let name = '', bestQ = 0;
-    outer: for (const [x, y, bw, bh, th] of (quick ? bands.slice(0, 2) : bands)) for (const m of modes){
-      const r = await ocr(w2, prep(canvas, x, y, bw, bh, th, m), '7', "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzéÉ'’.- ");
-      const nm = parseName(r.text); if (nm.length < 3) continue;
-      const q = IDX.cards ? nameQuality(nm) : r.conf / 100;
-      if (q > bestQ){ bestQ = q; name = nm; }
-      if (bestQ >= .92) break outer;
-    }
-    return name;
-  };
-  const [n, nm] = await Promise.all([numTask(), nameTask()]);
-  res.number = n.number; res.total = n.total; res.raw = n.raw;
-  // Ett nummer som pekar ut exakt ett kort behöver inget namn
-  res.name = n.found && uniqueByNumber(res) ? '' : nm;
+  // 1) Numret först: en bred remsa nere till vänster täcker både Sword & Shield- och Scarlet & Violet-layouten.
+  //    Smalare remsor och höger sida (äldre kort) bara om det behövs.
+  const regions = [[0, H * .84, W * .55, H * .16, 200, '6'], [0, H * .865, W * .52, H * .075, 160, '6'], [0, H * .91, W * .52, H * .075, 160, '6'], [W * .45, H * .9, W * .55, H * .1, 170, '6']];
+  if (!quick) regions.push([0, H * .85, W * .6, H * .15, 220, '6'], [W * .4, H * .88, W * .6, H * .12, 180, '6']);
+  let found = false;
+  outer: for (const [x, y, rw, rh, th, psm] of regions) for (const m of (quick ? ['bin', 'adp'] : ['bin', 'adp', 'gray', 'inv'])){
+    const r = await ocr(w, prep(canvas, x, y, rw, rh, th, m), psm, numWL);
+    res.raw += ' ' + r.text;
+    const n = parseNumber(r.text);
+    if (n && validNum(n)){ res.number = n.number; res.total = n.total; found = true; break outer; }
+    if (n && n.number && !res.number){ res.number = n.number; res.total = n.total; }
+  }
+  // 2) Namnet behövs bara om numret inte pekar ut ett enda kort. Flera band, valet styrs av likhet med riktiga kortnamn.
+  if (found && uniqueByNumber(res)) return res;
+  const bands = [[W * .04, H * .025, W * .7, H * .09, 110], [W * .16, H * .03, W * .58, H * .08, 120], [W * .04, H * .045, W * .68, H * .095, 110]];
+  const modes = quick ? ['bin', 'adp'] : ['bin', 'adp', 'inv', 'gray'];
+  let bestQ = 0;
+  nameLoop: for (const [x, y, bw, bh, th] of (quick ? bands.slice(0, 2) : bands)) for (const m of modes){
+    const r = await ocr(w, prep(canvas, x, y, bw, bh, th, m), '7', "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzéÉ'’.- ");
+    const nm = parseName(r.text); if (nm.length < 3) continue;
+    const q = IDX.cards ? nameQuality(nm) : r.conf / 100;
+    if (q > bestQ){ bestQ = q; res.name = nm; }
+    if (bestQ >= .92) break nameLoop;
+  }
   return res;
 }
 /* Hittar kortet i ett foto via raden "©2025 Pokémon / Nintendo / Creatures / GAME FREAK" längst ner på moderna kort.
@@ -1758,7 +1769,7 @@ async function runOcr(canvas, uploaded){
       const rf = await readCard(canvas, true), rk = rank(rf);
       if (rk.length && (!ranked.length || rk[0].score > ranked[0].score)){ r = rf; ranked = rk; }
     }
-    if (!strong(ranked) && !crop){
+    if (!strong(ranked) && !crop && uploaded){
       phase('Letar efter kortet …');
       const ac = await anchorCrop(canvas).catch(() => null);
       if (ac){
@@ -1766,7 +1777,7 @@ async function runOcr(canvas, uploaded){
         if (rk.length && (!ranked.length || rk[0].score > ranked[0].score)){ r = ra; ranked = rk; }
       }
     }
-    if (!strong(ranked) && !crop){
+    if (!strong(ranked) && !crop && uploaded){
       phase('Letar i hela bilden …');
       const r2 = await readWhole(canvas);
       const merged = { name: pickName(r.name, r2.name), number: r.number || r2.number, total: r.total || r2.total, raw: (r.raw || '') + ' ' + (r2.raw || '') };
@@ -1781,7 +1792,7 @@ async function runOcr(canvas, uploaded){
       const rk = rank(merged);
       if (rk.length && (!ranked.length || rk[0].score >= ranked[0].score)){ r = merged; ranked = rk; }
     }
-    if (!strong(ranked) && crop){
+    if (!strong(ranked) && (crop || !uploaded)){
       phase('Letar i hela bilden …');
       const r2 = await readWhole(canvas);
       const merged = { name: pickName(r.name, r2.name), number: r.number || r2.number, total: r.total || r2.total, raw: (r.raw || '') + ' ' + (r2.raw || '') };
@@ -1793,7 +1804,7 @@ async function runOcr(canvas, uploaded){
     const left = 900 - (Date.now() - t0); if (left > 0) await new Promise(res => setTimeout(res, left));
     fillFields(r);
     frame.classList.remove('busy');
-    if (r.name || r.number || ranked.length){ phase('Slår upp kortet …'); try { await finish(r, ranked); } finally { stopFx(); } }
+    if (r.name || r.number || ranked.length){ phase('Slår upp kortet …'); try { await finish(r, ranked); } finally { stopFx(); } if (!st.classList.contains('err')) st.textContent += ` (${((Date.now() - t0) / 1000).toFixed(1)} s${ocrMode ? ', ' + ocrMode + ' textläsare' : ''})`; }
     else { stopFx(); st.textContent = 'Kunde inte läsa kortet. Prova bättre ljus, eller skriv namn och nummer själv.'; st.classList.add('err'); }
   } catch (e){
     stopFx(); frame.classList.remove('busy');
