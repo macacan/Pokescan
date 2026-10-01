@@ -619,6 +619,15 @@ async function pool(items, n, fn){
   await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) await fn(items[i++]); }));
 }
 
+/* ---------- Kortbilder med reservkällor (nya set saknar ofta bild hos TCGdex) ---------- */
+function imgSrcs(c, big){
+  const i = String(c.id).lastIndexOf('-'), set = String(c.id).slice(0, i), num = String(c.id).slice(i + 1).replace(/^0+(?=\d)/, '');
+  const s2 = set.replace(/^([a-z]+)0+(\d)/i, '$1$2').replace(/\./g, 'pt');
+  return [big ? (c.imgL || c.img) : c.img, `https://images.pokemontcg.io/${s2}/${num}${big ? '_hires' : ''}.png`].filter(Boolean);
+}
+window.imgFb = el => { const fb = (el.dataset.fb || '').split('|').filter(Boolean); if (fb.length){ el.src = fb.shift(); el.dataset.fb = fb.join('|'); } else el.onerror = null; };
+const imgTag = (c, big, alt) => { const l = imgSrcs(c, big); return `<img loading="lazy" src="${esc(l[0])}" data-fb="${esc(l.slice(1).join('|'))}" onerror="imgFb(this)" alt="${esc(alt)}">`; };
+
 /* ---------- Pris ---------- */
 const TP_NAMES = { normal: 'Vanlig', holofoil: 'Holo', reverseHolofoil: 'Reverse holo', '1stEditionNormal': '1st Edition', '1stEditionHolofoil': '1st Ed. holo', unlimited: 'Unlimited', unlimitedHolofoil: 'Unlimited holo' };
 const tpPrice = v => v && typeof v === 'object' ? (v.marketPrice || v.midPrice || v.lowPrice || v.directLowPrice || null) : null;
@@ -762,7 +771,7 @@ function skeleton(){
 function tileInner(c){
   const p = prices(c);
   const price = !c.detailed ? (c.failed ? 'Pris saknas' : 'Hämtar pris …') : p.main == null ? 'Pris saknas' : kr(p.main);
-  return `<img loading="lazy" src="${esc(c.img)}" alt="${esc(c.name)}">
+  return `${imgTag(c, false, c.name)}
     <span class="n">${esc(c.name)}</span><span class="s">${esc(c.setName || '')}${c.setName ? ' · ' : ''}${esc(c.number)}${c.total ? '/' + esc(c.total) : ''}</span>
     <span class="p">${price}</span>${tierLabel(c)}`;
 }
@@ -876,7 +885,7 @@ async function showDetail(c){
     delta = `<span class="delta ${up ? 'up' : 'down'}"><svg viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">${up ? '<path d="M6 1l5 9H1z"/>' : '<path d="M6 11L1 2h10z"/>'}</svg>${up ? '+' : '−'}${nf0.format(Math.abs(pct))} % mot snitt 30 dagar</span>`;
   }
   d.innerHTML = `<div class="detail">
-    <div class="art"><div class="holo" id="holo"><img src="${esc(c.imgL || c.img)}" alt="${esc(c.name)}"><span class="shine"></span></div><button class="btn yellow add-top" id="addColl" type="button">Lägg i samling</button></div>
+    <div class="art"><div class="holo" id="holo">${imgTag(c, true, c.name)}<span class="shine"></span></div><button class="btn yellow add-top" id="addColl" type="button">Lägg i samling</button></div>
     <div>
       <div class="d-head"><div><h2>${esc(c.name)}</h2>
         <p class="meta">${esc(c.setName)} · ${esc(c.number)}${c.total ? '/' + esc(c.total) : ''}${c.artist ? ' · ' + esc(c.artist) : ''}</p></div>
@@ -1121,12 +1130,12 @@ function renderColl(){
     const qty = `<div class="qty"><button aria-label="Minska antal">−</button><b>${x.qty}</b><button aria-label="Öka antal">+</button></div>`;
     if (collLayout === 'list'){
       d.className = 'crow';
-      d.innerHTML = `<img src="${esc(x.img)}" alt="${esc(x.name)}"><div><div class="cr-p"><b>${kr((x.sek||0) * x.qty)}</b>${badge}</div>
+      d.innerHTML = `${imgTag(x, false, x.name)}<div><div class="cr-p"><b>${kr((x.sek||0) * x.qty)}</b>${badge}</div>
         <div class="cr-n">${esc(x.name)}${esc(tags)} · #${esc(x.number)}${x.total ? '/' + esc(x.total) : ''}</div>
         <div class="cr-s">${collSort === 'set' ? '' : (x.serie ? esc(x.serie) + ' › ' : '') + esc(x.set || '')}${added ? (collSort === 'set' ? '' : ' · ') + esc(added) : ''}${x.rarity ? ' · ' + esc(x.rarity) : ''}</div></div>${qty}`;
     } else {
       d.className = 'tile'; d.style.cursor = 'default';
-      d.innerHTML = `<img src="${esc(x.img)}" alt="${esc(x.name)}"><span class="n">${esc(x.name)}${esc(tags)}</span>
+      d.innerHTML = `${imgTag(x, false, x.name)}<span class="n">${esc(x.name)}${esc(tags)}</span>
         <span class="s">${esc(x.set)} · ${esc(x.number)}${x.total ? '/' + esc(x.total) : ''}</span><span class="p">${kr((x.sek||0) * x.qty)}</span>${badge}${qty}`;
     }
     const [m, pl] = d.querySelectorAll('button');
@@ -1168,7 +1177,13 @@ $('#searchForm').addEventListener('submit', async e => {
 
 /* ---------- Kortindex (alla kort lokalt, för snabb och tolerant matchning) ---------- */
 const IDX = { cards: null, sets: null, lang: null, loading: null, totals: new Set() };
-function markTotals(){ IDX.totals = new Set(Object.values(IDX.sets || {}).map(x => x.official).filter(Boolean)); }
+const normNum = v => /^\d+$/.test(String(v)) ? String(parseInt(v, 10)) : String(v).toUpperCase();
+function markTotals(){
+  IDX.totals = new Set(Object.values(IDX.sets || {}).map(x => x.official).filter(Boolean));
+  // alla kombinationer nummer/total som finns: en felläst 182 -> 152 förkastas om inget kort har just den kombinationen
+  IDX.pairs = new Set((IDX.cards || []).map(c => normNum(c.localId) + '|' + (IDX.sets[c.set]?.official || '')));
+}
+const pairOk = n => !IDX.pairs || !/^\d+$/.test(String(n.total)) || IDX.pairs.has(normNum(n.number) + '|' + parseInt(n.total, 10));
 /* Finns numret/totalen ens i något set? Filtrerar bort felläsningar direkt. */
 function validNum(n){
   if (!n || !n.number || !n.total) return false;
@@ -1218,15 +1233,26 @@ function lev(a, b){
   }
   return prev[b.length];
 }
+const NAME_PFX = new Set(['team', 'rocket', 'dark', 'light', 'mega', 'radiant', 'shining', 'galarian', 'alolan', 'hisuian', 'paldean', 'primal', 'shadow']);
+const coreCache = new Map();
+/* Kärnnamnet utan förled: "steven s baltoy" -> "baltoy", "team rocket s koffing" -> "koffing". Annars matchar bara "Steven's" tre helt olika kort. */
+function nameCore(key){
+  let c = coreCache.get(key); if (c !== undefined) return c;
+  const t = key.split(' ').filter(Boolean);
+  while (t.length > 1 && (t[1] === 's' || NAME_PFX.has(t[0]))) t.splice(0, t[1] === 's' ? 2 : 1);
+  c = t.join(' '); coreCache.set(key, c); return c;
+}
 function nameSim(ocr, key){
   if (!ocr || !key) return 0;
   const sim = (x, y) => 1 - lev(x, y) / Math.max(x.length, y.length);
-  const first = key.split(' ')[0];
-  let best = Math.max(sim(ocr, key), sim(ocr, first));
-  // jämför även ord för ord, så att skräptecken runt namnet inte stör
-  for (const w of ocr.split(' ')) if (w.length >= 4) best = Math.max(best, sim(w, first), sim(w, key));
-  if (key.startsWith(ocr) && ocr.length >= 4) best = Math.max(best, .9);
+  const core = nameCore(key), first = core.split(' ')[0];
+  let best = Math.max(sim(ocr, key), sim(ocr, core));
+  // jämför även ord för ord mot kärnnamnet, så att skräptecken runt namnet inte stör
+  for (const w of ocr.split(' ')) if (w.length >= 4) best = Math.max(best, sim(w, first), sim(w, core), sim(w, key));
+  if (core.startsWith(ocr) && ocr.length >= 4) best = Math.max(best, .9);
   if (ocr.includes(first) && first.length >= 4) best = Math.max(best, .85);
+  // bara ett förled utan kärnnamn ("steven s") ger aldrig träff
+  if (core !== key){ const lead = key.slice(0, key.length - core.length).trim(); if (lead.startsWith(ocr) || ocr === lead) best = Math.min(best, .6); }
   return best;
 }
 /* Rangordna kort mot det som lästes av. Returnerar [{card, score, nsim, num, tot}] */
@@ -1391,7 +1417,8 @@ $('#autoAdd').addEventListener('change', e => {
   else { autoOn = false; clearTimeout(autoTimer); $('#autoChip').hidden = true; $('#hit').hidden = true; }
 });
 function showHit(c, p, sub){
-  $('#hitImg').src = c.img || ''; $('#hitName').textContent = c.name;
+  { const im = $('#hitImg'), l = imgSrcs(c, false); im.dataset.fb = l.slice(1).join('|'); im.onerror = () => window.imgFb(im); im.src = l[0]; }
+  $('#hitName').textContent = c.name;
   $('#hitSub').textContent = sub; $('#hitCount').textContent = batchN ? `${batchN} ${batchN === 1 ? 'kort' : 'kort'} tillagda · ${kr(batchSum)}` : '';
   $('#hit').hidden = false; clearTimeout(hitT); hitT = setTimeout(() => { $('#hit').hidden = true; }, 5000);
 }
@@ -1447,7 +1474,8 @@ function startAuto(){
     if (!autoBusy && video.readyState >= 2){
       autoBusy = true;
       try {
-        const fr = grabFrame(), sharp = sharpness(fr), lum = brightness(fr);
+        let fr = grabFrame(); const tilt = estimateSkew(grabFull()); if (tilt) fr = rotateCanvas(fr, tilt);
+        const sharp = sharpness(fr), lum = brightness(fr);
         if (lum < 45){ chip('För mörkt – tänd blixten eller gå till bättre ljus', true); }
         else if (sharp < 40){ chip('Håll still – bilden är suddig', true); }
         else if (!IDX.cards){ chip('Laddar kortdatabasen …'); }
@@ -1455,7 +1483,7 @@ function startAuto(){
         else {
           chip(lum > 225 ? 'Mycket ljust – undvik reflexer, luta kortet lite' : 'Läser av …', lum > 225);
           const up = upscale(fr, 1300);
-          const r = await readCard(up, true); if (!autoOn) return;
+          const r = await readCard(up, true, 3); if (!autoOn) return;
           let ranked = rankCandidates(r), art = [];
           if (!strong(ranked)){ art = await artMatch(up).catch(() => []); if (!autoOn) return; ranked = withArt(rankCandidates(r), art); }
           const key = ranked[0] ? ranked[0].card.id : '';
@@ -1498,9 +1526,10 @@ $('#snap').addEventListener('click', async () => {
   // Flera bilder efter varandra, den skarpaste används
   let c = grabFrame(), best = sharpness(c);
   for (let i = 0; i < 5; i++){ await new Promise(r => setTimeout(r, 80)); const f = grabFrame(), v = sharpness(f); if (v > best){ best = v; c = f; } }
+  const full = grabFull();
   shot.classList.remove('fit'); shot.src = c.toDataURL('image/jpeg', .92); shot.hidden = false; video.hidden = true; frame.hidden = true;
   stopCamera();
-  await runOcr(c);
+  await runOcr(c, false, full);
 });
 $('#file').addEventListener('change', e => {
   const f = e.target.files[0]; if (!f) return;
@@ -1656,9 +1685,12 @@ function prep(src, x, y, w, h, targetH, mode){
         const sum = I[y1 * (W + 1) + x1] - I[y0 * (W + 1) + x1] - I[y1 * (W + 1) + x0] + I[y0 * (W + 1) + x0];
         adp[y * W + x] = gray[y * W + x] * (x1 - x0) * (y1 - y0) < sum * .88 ? 0 : 255; } }
   }
+  // Textläsaren vill ha mörk text på ljus botten. På mörka kort (ljus text) är vitt i minoritet efter tröskling: vänd då bilden automatiskt.
+  const vals = new Uint8Array(n); let whites = 0;
+  for (let i = 0; i < n; i++){ const v = adp ? adp[i] : mode === 'gray' ? gray[i] : (gray[i] > t ? 255 : 0); vals[i] = v; if (v > 127) whites++; }
+  const flip = mode === 'inv' || ((mode === 'bin' || mode === 'adp') && whites < n * .5);
   for (let i = 0; i < n; i++){
-    let v = adp ? adp[i] : mode === 'gray' ? gray[i] : (gray[i] > t ? 255 : 0);
-    if (mode === 'inv') v = 255 - v;
+    const v = flip ? 255 - vals[i] : vals[i];
     p[i*4] = p[i*4+1] = p[i*4+2] = v; p[i*4+3] = 255;
   }
   g.putImageData(d, 0, 0);
@@ -1697,26 +1729,30 @@ async function ocr(w, img, psm, wl){
   return { text: r.data.text || '', conf: r.data.confidence || 0 };
 }
 /* Läser namn och nummer ur en kortbild. quick = färre varianter (för autoläge). */
-async function readCard(canvas, quick){
-  const w = await getWorker(), W = canvas.width, H = canvas.height;
+async function readCard(canvas, quick, maxCalls){
+  const w = await getWorker(), W = canvas.width, H = canvas.height; let calls = 0;
   const res = { name: '', number: '', total: '', raw: '' };
   const numWL = '0123456789/ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   // 1) Numret först: en bred remsa nere till vänster täcker både Sword & Shield- och Scarlet & Violet-layouten.
   //    Smalare remsor och höger sida (äldre kort) bara om det behövs.
-  const regions = [[0, H * .84, W * .55, H * .16, 200, '6'], [0, H * .865, W * .52, H * .075, 160, '6'], [0, H * .91, W * .52, H * .075, 160, '6'], [W * .45, H * .9, W * .55, H * .1, 170, '6']];
-  if (!quick) regions.push([0, H * .85, W * .6, H * .15, 220, '6'], [W * .4, H * .88, W * .6, H * .12, 180, '6']);
+  // Numret sitter ca 93–97 % ner på kortet: smala remsor först, bredare efter, höger sida sist (äldre kort)
+  // Bred remsa först (hittar numret oavsett exakt läge), sedan smala remsor med bara nummerraden (läses säkrast; felläsningar som 182->152 förkastas av pairOk)
+  const regions = [[0, H * .84, W * .55, H * .16, 260, '6'], [0, H * .925, W * .5, H * .06, 300, '6'], [0, H * .895, W * .5, H * .075, 300, '6'], [0, H * .945, W * .5, H * .055, 300, '6'], [W * .45, H * .9, W * .55, H * .1, 200, '6']];
+  if (!quick) regions.push([0, H * .86, W * .6, H * .14, 260, '6'], [W * .4, H * .92, W * .6, H * .08, 260, '6']);
   let found = false;
-  outer: for (const [x, y, rw, rh, th, psm] of regions) for (const m of (quick ? ['bin', 'adp'] : ['bin', 'adp', 'gray', 'inv'])){
+  outer: for (const [x, y, rw, rh, th, psm] of regions) for (const m of ['bin', 'gray']){
+    if (maxCalls && ++calls > maxCalls) break outer;
     const r = await ocr(w, prep(canvas, x, y, rw, rh, th, m), psm, numWL);
     res.raw += ' ' + r.text;
     const n = parseNumber(r.text);
-    if (n && validNum(n)){ res.number = n.number; res.total = n.total; found = true; break outer; }
+    if (n && validNum(n) && pairOk(n)){ res.number = n.number; res.total = n.total; found = true; break outer; }
     if (n && n.number && !res.number){ res.number = n.number; res.total = n.total; }
   }
   // 2) Namnet behövs bara om numret inte pekar ut ett enda kort. Flera band, valet styrs av likhet med riktiga kortnamn.
   if (found && uniqueByNumber(res)) return res;
+  if (maxCalls && !found) return res;      // snabbspåret: hittas inget nummer direkt är bilden troligen felriktad, låt hjälpspåren ta över
   const bands = [[W * .04, H * .025, W * .7, H * .09, 110], [W * .16, H * .03, W * .58, H * .08, 120], [W * .04, H * .045, W * .68, H * .095, 110]];
-  const modes = quick ? ['bin', 'adp'] : ['bin', 'adp', 'inv', 'gray'];
+  const modes = quick ? ['bin', 'adp'] : ['bin', 'adp', 'inv'];
   let bestQ = 0;
   nameLoop: for (const [x, y, bw, bh, th] of (quick ? bands.slice(0, 2) : bands)) for (const m of modes){
     const r = await ocr(w, prep(canvas, x, y, bw, bh, th, m), '7', "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzéÉ'’.- ");
@@ -1727,12 +1763,58 @@ async function readCard(canvas, quick){
   }
   return res;
 }
+/* ---------- Uträtning av sneda kort ---------- */
+/* Kortets kanter, ramar och textrader ligger längs samma axlar. Provar vinklar och väljer den där kantstyrkan samlas i smala rader och kolumner
+   (samma idé som vid uträtning av inskannade dokument). Returnerar lutning i grader (positivt = medurs), 0 om osäker. */
+function estimateSkew(src){
+  const w = 160, h = Math.max(30, Math.round(src.height * w / src.width)), t = document.createElement('canvas'); t.width = w; t.height = h;
+  const g = t.getContext('2d', { willReadFrequently: true }); g.drawImage(src, 0, 0, w, h);
+  const p = g.getImageData(0, 0, w, h).data, gr = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) gr[i] = p[i*4] * .299 + p[i*4+1] * .587 + p[i*4+2] * .114;
+  const E = new Float32Array(w * h), bins = new Int32Array(1100);
+  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++){ const i = y * w + x; const e = Math.abs(gr[i+1] - gr[i-1]) + Math.abs(gr[i+w] - gr[i-w]); E[i] = e; bins[Math.min(1099, e | 0)]++; }
+  // bara de ~4000 starkaste kanterna (snabbt och mindre brus)
+  let thr = 1099, acc = 0; while (thr > 12 && acc + bins[thr] < 4000){ acc += bins[thr]; thr--; }
+  const xs = [], ys = [], es = [];
+  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++){ const e = E[y * w + x]; if (e >= thr){ xs.push(x - w / 2); ys.push(y - h / 2); es.push(e); } }
+  if (xs.length < 200) return 0;
+  const n = xs.length, size = Math.ceil(Math.hypot(w, h)) + 4, off = size / 2;
+  const score = deg => {
+    const c = Math.cos(deg * Math.PI / 180), s = Math.sin(deg * Math.PI / 180), R = new Float32Array(size), C = new Float32Array(size);
+    for (let i = 0; i < n; i++){ const x = xs[i], y = ys[i]; R[(y * c - x * s + off) | 0] += es[i]; C[(x * c + y * s + off) | 0] += es[i]; }
+    let sc = 0; for (let i = 0; i < size; i++) sc += R[i] * R[i] + C[i] * C[i];
+    return sc;
+  };
+  let best = -1, bd = 0, sum = 0, cnt = 0;
+  for (let d = -20; d <= 20; d += 2){ const v = score(d); sum += v; cnt++; if (v > best){ best = v; bd = d; } }
+  for (let d = bd - 1.5; d <= bd + 1.5; d += .5){ const v = score(d); if (v > best){ best = v; bd = d; } }
+  const base = score(0), conf = best / (sum / cnt);
+  // kräv tydlig topp, och att den är bättre än ingen rotation
+  if (best / base < 1.025) return 0;
+  return Math.abs(bd) < 1.2 ? 0 : bd;
+}
+function rotateCanvas(src, deg){
+  if (!deg) return src;
+  const c = document.createElement('canvas'); c.width = src.width; c.height = src.height;
+  const g = c.getContext('2d'); g.imageSmoothingQuality = 'high'; g.fillStyle = '#222'; g.fillRect(0, 0, c.width, c.height);
+  g.translate(c.width / 2, c.height / 2); g.rotate(-deg * Math.PI / 180); g.drawImage(src, -c.width / 2, -c.height / 2);
+  return c;
+}
+/* Hela kamerabilden (längsta sidan högst 1600 px): används när kortet inte ligger inom de gula hörnen */
+function grabFull(){
+  const vw = video.videoWidth, vh = video.videoHeight, k = Math.min(1, 1600 / Math.max(vw, vh));
+  const c = document.createElement('canvas'); c.width = Math.round(vw * k); c.height = Math.round(vh * k);
+  c.getContext('2d').drawImage(video, 0, 0, c.width, c.height); return c;
+}
+
 /* Hittar kortet i ett foto via raden "©2025 Pokémon / Nintendo / Creatures / GAME FREAK" längst ner på moderna kort.
    Textens storlek och plats ger kortets storlek och läge, så vi kan beskära exakt även när kortet ligger på ett bord eller i en hand. */
 async function anchorCrop(canvas){
   const w = await getWorker(), H = canvas.height, W = canvas.width;
   await w.setParameters({ tessedit_pageseg_mode: '11', tessedit_char_whitelist: '' });
-  const r = await w.recognize(prep(canvas, 0, 0, W, H, H, 'gray'));
+  const oy = H * .3;                           // copyrightraden sitter längst ner på kortet: läs bara nedre delen (snabbare)
+  const r = await w.recognize(prep(canvas, 0, oy, W, H - oy, H - oy, 'gray'));
+  (r.data.words || []).forEach(x => { x.bbox.y0 += oy; x.bbox.y1 += oy; });
   const ws = (r.data.words || []).filter(x => /nintendo|creatures|freak|game|pok[eé]mon|^.?20\d\d$|^.?20\d\d/i.test(x.text));
   let best = null;
   for (const a of ws){
@@ -1782,66 +1864,63 @@ async function readWhole(canvas){
   return res;
 }
 function fillFields(r){ $('#ocrFields').hidden = false; $('#ocrName').value = r.name; $('#ocrNum').value = r.number; $('#ocrTot').value = r.total; }
-async function runOcr(canvas, uploaded){
+async function runOcr(canvas, uploaded, full){
   const st = $('#scanStatus'); st.className = 'status'; $('#ocrFields').hidden = false;
   startFx(); phase('Läser av kortet …');
-  const t0 = Date.now();
+  const t0 = Date.now(), over = () => Date.now() - t0 > 28000;
   try {
     await Promise.race([loadIndex(), new Promise(r => setTimeout(r, 15000))]);
+    // 1) Räta upp sneda kort (kanterna visar lutningen)
+    const tilt = estimateSkew(uploaded ? canvas : (full || canvas));
+    if (tilt){ canvas = rotateCanvas(canvas, tilt); if (full) full = rotateCanvas(full, tilt); }
     canvas = upscale(canvas, 1300);
-    // Uppladdade foton: hitta själva kortet i bilden och läs bara det (snabbare och säkrare än hela bilden).
-    const crop = uploaded ? (await anchorCrop(canvas).catch(() => null)) || cropCard(canvas) : null;
-    const main = crop ? upscale(crop, 1300) : canvas;
-    let r = await readCard(main, true);
     let art = [];
     const rank = m => withArt(rankCandidates(m), art);
-    let ranked = rank(r);
-    // Bildmatchning mot kortindexet: klarar suddiga foton där texten inte går att läsa
+    const consider = (m, rk) => { rk = rk || rank(m); if (rk.length && (!ranked.length || rk[0].score > ranked[0].score)){ r = m; ranked = rk; } };
+    const merge = (x, y) => ({ name: pickName(x.name, y.name), number: y.number || x.number, total: y.total || x.total, raw: (x.raw || '') + ' ' + (y.raw || '') });
+    // 2) Kameran: snabbspår (högst 3 textläsningar), kortet ligger oftast inom de gula hörnen.
+    //    Uppladdade foton: hitta först själva kortet i bilden (copyrightraden) och läs bara det.
+    let r, ranked, crop = null, main = canvas;
+    if (uploaded){
+      crop = (await anchorCrop(canvas).catch(() => null)) || cropCard(canvas);
+      if (crop) main = upscale(crop, 1300);
+    }
+    r = await readCard(main, true, uploaded && !crop ? 3 : uploaded ? 0 : 3); ranked = rank(r);
+    // 3) Bildmatchning mot kortindexet: klarar suddiga foton där texten inte går att läsa
     if (!strong(ranked) && (!uploaded || crop)){
       phase('Jämför med alla kort …');
       art = await artMatch(main).catch(() => []);
       ranked = rank(r);
     }
-    if (!strong(ranked) && crop){
-      const rf = await readCard(canvas, true), rk = rank(rf);
-      if (rk.length && (!ranked.length || rk[0].score > ranked[0].score)){ r = rf; ranked = rk; }
-    }
-    if (!strong(ranked) && !crop && uploaded){
+    // 4) Kameran: låg kortet utanför de gula hörnen? Leta upp det i hela bilden
+    let best = main;
+    if (!strong(ranked) && !uploaded && full && !over()){
       phase('Letar efter kortet …');
-      const ac = await anchorCrop(canvas).catch(() => null);
+      const ac = await anchorCrop(full).catch(() => null);
       if (ac){
-        const ra = await readCard(upscale(ac, 1300), true), rk = rank(ra);
-        if (rk.length && (!ranked.length || rk[0].score > ranked[0].score)){ r = ra; ranked = rk; }
+        const m = upscale(ac, 1300), rc = await readCard(m, true);
+        const am = await artMatch(m).catch(() => []); if (am.length) art = am;
+        consider(rc); best = m;
       }
     }
-    if (!strong(ranked) && !crop && uploaded){
-      phase('Letar i hela bilden …');
-      const r2 = await readWhole(canvas);
-      const merged = { name: pickName(r.name, r2.name), number: r.number || r2.number, total: r.total || r2.total, raw: (r.raw || '') + ' ' + (r2.raw || '') };
-      if (validNum(r2) && !validNum(r)){ merged.number = r2.number; merged.total = r2.total; }
-      const ranked2 = rank(merged);
-      if (ranked2.length && (!ranked.length || ranked2[0].score >= ranked[0].score)){ r = merged; ranked = ranked2; }
-    }
-    if (!strong(ranked)){
+    if (!strong(ranked) && crop && !over()){ consider(await readCard(canvas, true)); }
+    // 5) Grundligare läsning av samma bild
+    if (!strong(ranked) && !over()){
       phase('Läser noggrant …');
-      const full = await readCard(main, false);
-      const merged = { name: pickName(r.name, full.name), number: full.number || r.number, total: full.total || r.total, raw: (r.raw || '') + ' ' + (full.raw || '') };
-      const rk = rank(merged);
-      if (rk.length && (!ranked.length || rk[0].score >= ranked[0].score)){ r = merged; ranked = rk; }
+      consider(merge(r, await readCard(best, false)));
     }
-    if (!strong(ranked) && (crop || !uploaded)){
+    // 6) Sista utväg för uppladdade foton: sök text i hela bilden
+    if (!strong(ranked) && uploaded && !over()){
       phase('Letar i hela bilden …');
-      const r2 = await readWhole(canvas);
-      const merged = { name: pickName(r.name, r2.name), number: r.number || r2.number, total: r.total || r2.total, raw: (r.raw || '') + ' ' + (r2.raw || '') };
-      if (validNum(r2) && !validNum(r)){ merged.number = r2.number; merged.total = r2.total; }
-      const rk = rank(merged);
-      if (rk.length && (!ranked.length || rk[0].score >= ranked[0].score)){ r = merged; ranked = rk; }
+      const r2 = await readWhole(canvas), mg = merge(r, r2);
+      if (validNum(r2) && !validNum(r)){ mg.number = r2.number; mg.total = r2.total; }
+      consider(mg);
     }
     // Låt animationen synas lagom länge även när avläsningen går blixtsnabbt
     const left = 900 - (Date.now() - t0); if (left > 0) await new Promise(res => setTimeout(res, left));
     fillFields(r);
     frame.classList.remove('busy');
-    if (r.name || r.number || ranked.length){ phase('Slår upp kortet …'); try { await finish(r, ranked); } finally { stopFx(); } if (!st.classList.contains('err')) st.textContent += ` (${((Date.now() - t0) / 1000).toFixed(1)} s${ocrMode ? ', ' + ocrMode + ' textläsare' : ''})`; }
+    if (r.name || r.number || ranked.length){ phase('Slår upp kortet …'); try { await finish(r, ranked); } finally { stopFx(); } if (!st.classList.contains('err')) st.textContent += ` (${((Date.now() - t0) / 1000).toFixed(1)} s${tilt ? ', rätade upp ' + Math.round(Math.abs(tilt)) + '°' : ''}${ocrMode ? ', ' + ocrMode + ' textläsare' : ''})`; }
     else { stopFx(); st.textContent = 'Kunde inte läsa kortet. Prova bättre ljus, eller skriv namn och nummer själv.'; st.classList.add('err'); }
   } catch (e){
     stopFx(); frame.classList.remove('busy');
