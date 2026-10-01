@@ -18,7 +18,7 @@ Appen jämför kortets konstverk med ett index av bildfingeravtryck (`www/hashes
 
 ## Offline och integritet
 
-Textläsaren (Tesseract), dess språkdata och typsnitten ligger i appen (`www/vendor`, `www/fonts`), så inget hämtas från CDN eller Google. Appen pratar bara med TCGdex (kortdata och priser), pokemontcg.io (reservkälla när TCGdex saknar pris), Frankfurter (växelkurser), PokeAPI (Pokédex-info) och GitHub (Pokémon-bilder), och bara när de behövs.
+Textläsaren (Tesseract), dess språkdata och typsnitten ligger i appen (`www/vendor`, `www/fonts`), så inget hämtas från CDN eller Google. Appen pratar bara med TCGdex (kortdata och priser), pokemontcg.io och TCGCSV (reservkällor när TCGdex saknar pris), Frankfurter (växelkurser), PokeAPI (Pokédex-info) och GitHub (Pokémon-bilder), och bara när de behövs.
 
 ## Publicera på Google Play
 

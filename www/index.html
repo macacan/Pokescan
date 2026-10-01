@@ -692,14 +692,51 @@ async function ptcgPrices(c){
   ptcgCache.set(c.id, job); return job;
 }
 const hasAnyPrice = c => prices({ ...c, detailed: true }).main != null;
-/* Fyll på pris från reservkällan om TCGdex saknar det */
+/* Reservkälla 2: TCGCSV (gratis spegel av TCGplayers priser, ingen nyckel, uppdateras dagligen). Nyast set finns ofta här först. */
+const TCSV = 'https://tcgcsv.com/tcgplayer/3';
+const tcsvSetKey = n => normName(String(n || '').replace(/^[^:]*:\s*/, ''));
+async function tcsvJson(url){
+  const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 12000);
+  try { const r = await fetch(url, { signal: ctl.signal }); if (!r.ok) return null; const j = await r.json(); return j && j.results ? j.results : null; } catch { return null; } finally { clearTimeout(to); }
+}
+async function tcsvCached(key, url, ttl){
+  const c = await idb.get(key);
+  if (c && Date.now() - c.t < ttl) return c.v;
+  const v = await tcsvJson(url); if (v) idb.set(key, { t: Date.now(), v });
+  return v || (c ? c.v : null);
+}
+const tcsvGroups = () => tcsvCached('tcsv-groups', TCSV + '/groups', 24 * 3600e3);
+const tcsvSub = n => { const k = String(n || '').replace(/[^A-Za-z0-9]+/g, ' ').trim().split(' ').map((w, i) => i ? w[0].toUpperCase() + w.slice(1) : w.toLowerCase()).join(''); return k.replace(/^1stEdition/i, '1stEdition'); };
+async function tcsvPrices(c){
+  const want = tcsvSetKey(c.setName); if (!want) return null;
+  const groups = await tcsvGroups(); if (!groups) return null;
+  // setet: exakt namn efter "SV05:"-prefixet, annars det kortaste gruppnamn som innehåller setnamnet
+  let g = groups.find(x => tcsvSetKey(x.name) === want) || groups.filter(x => tcsvSetKey(x.name).includes(want)).sort((a, b) => a.name.length - b.name.length)[0];
+  if (!g) return null;
+  const [prods, pr] = await Promise.all([tcsvCached('tcsv-p-' + g.groupId, `${TCSV}/${g.groupId}/products`, 24 * 3600e3), tcsvCached('tcsv-x-' + g.groupId, `${TCSV}/${g.groupId}/prices`, 6 * 3600e3)]);
+  if (!prods || !pr) return null;
+  const num = String(c.number).replace(/^0+(?=\d)/, ''), nm = normName(c.name);
+  const cands = prods.filter(p => { const v = (p.extendedData || []).find(e => e.name === 'Number')?.value; return v && String(v).split('/')[0].replace(/^0+(?=\d)/, '') === num; });
+  const pick = cands.find(p => normName(p.cleanName || p.name) === nm) || cands.find(p => normName(p.cleanName || p.name).startsWith(nm)) || cands[0];
+  if (!pick) return null;
+  const rows = pr.filter(x => x.productId === pick.productId && (x.marketPrice || x.midPrice || x.lowPrice));
+  if (!rows.length) return null;
+  const tp = { updated: String(pick.modifiedOn || '').slice(0, 10) };
+  for (const x of rows) tp[tcsvSub(x.subTypeName)] = { lowPrice: x.lowPrice, midPrice: x.midPrice, highPrice: x.highPrice, marketPrice: x.marketPrice, directLowPrice: x.directLowPrice };
+  return { cm: null, tp };
+}
+/* Fyll på pris från reservkällor om TCGdex saknar det: 1) pokemontcg.io, 2) TCGCSV */
 async function fillPrice(c){
   if (!c.detailed || c.priceTried || hasAnyPrice(c)) return;
   c.priceTried = true;
-  const r = await ptcgPrices(c).catch(() => null);
-  if (!r) return;
-  if (r.cm) c.cm = { ...(c.cm || {}), ...Object.fromEntries(Object.entries(r.cm).filter(([, v]) => v)) };
-  if (r.tp) c.tp = { ...(c.tp || {}), ...r.tp };
+  const apply = r => {
+    if (!r) return;
+    if (r.cm) c.cm = { ...(c.cm || {}), ...Object.fromEntries(Object.entries(r.cm).filter(([, v]) => v)) };
+    if (r.tp) c.tp = { ...(c.tp || {}), ...r.tp };
+  };
+  apply(await ptcgPrices(c).catch(() => null));
+  if (hasAnyPrice(c)) return;
+  apply(await tcsvPrices(c).catch(() => null));
 }
 
 /* ---------- Flikar ---------- */
