@@ -291,7 +291,7 @@ dialog.sheet::backdrop{background:rgba(6,10,30,.62);backdrop-filter:blur(4px);-w
 .cgroup b{display:flex;align-items:center;gap:6px}
 .cr-s .setl{display:inline-flex}
 .cgroup span{font-size:.8rem;font-weight:800;color:var(--ink-2);white-space:nowrap}
-.crow{display:grid;grid-template-columns:54px 1fr auto;gap:12px;align-items:center;padding:10px;border-radius:16px;background:var(--surface-solid);border:2px solid var(--line)}
+.crow{cursor:pointer;display:grid;grid-template-columns:54px 1fr auto;gap:12px;align-items:center;padding:10px;border-radius:16px;background:var(--surface-solid);border:2px solid var(--line)}
 .crow img{width:54px;aspect-ratio:63/88;object-fit:contain;border-radius:6px;background:var(--surface-2)}
 .cr-p{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .cr-p b{font:400 1.25rem var(--display);font-variant-numeric:tabular-nums}
@@ -971,7 +971,7 @@ async function showDetail(c){
     delta = `<span class="delta ${up ? 'up' : 'down'}"><svg viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">${up ? '<path d="M6 1l5 9H1z"/>' : '<path d="M6 11L1 2h10z"/>'}</svg>${up ? '+' : '−'}${nf0.format(Math.abs(pct))} % mot snitt 30 dagar</span>`;
   }
   d.innerHTML = `<div class="detail">
-    <div class="art"><div class="holo" id="holo">${imgTag(c, true, c.name)}<span class="shine"></span></div><button class="btn yellow add-top" id="addColl" type="button">Lägg i samling</button></div>
+    <div class="art"><div class="holo" id="holo">${imgTag(c, true, c.name)}<span class="shine"></span></div><button class="btn yellow add-top" id="addColl" type="button">${c.owned ? 'Lägg till ett till (har ' + c.owned + ')' : 'Lägg i samling'}</button></div>
     <div>
       <div class="d-head"><div><h2>${esc(c.name)}</h2>
         <p class="meta">${esc(c.setName)} · ${esc(c.number)}${c.total ? '/' + esc(c.total) : ''}${c.artist ? ' · ' + esc(c.artist) : ''}</p></div>
@@ -1252,13 +1252,18 @@ function renderColl(){
         <div class="cr-n">${esc(x.name)}${esc(tags)} · #${esc(x.number)}${x.total ? '/' + esc(x.total) : ''}</div>
         <div class="cr-s">${collSort === 'set' ? '' : '<span class="setl">' + symImg(x) + '<span>' + (x.serie ? esc(x.serie) + ' › ' : '') + esc(x.set || '') + '</span></span>'}${added ? (collSort === 'set' ? '' : ' · ') + esc(added) : ''}${x.rarity ? ' · ' + esc(x.rarity) : ''}</div></div>${qty}`;
     } else {
-      d.className = 'tile'; d.style.cursor = 'default';
+      d.className = 'tile';
       d.innerHTML = `${imgTag(x, false, x.name)}<span class="n">${esc(x.name)}${esc(tags)}</span>
         <span class="setl">${symImg(x)}<span>${esc(x.set || '')}</span></span><span class="s">${x.serie ? esc(x.serie) + ' · ' : ''}#${esc(x.number)}${x.total ? '/' + esc(x.total) : ''}</span><span class="p">${kr((x.sek||0) * x.qty)}</span>${badge}${qty}`;
     }
     const [m, pl] = d.querySelectorAll('button');
     const upd = q => { const c = store.get('coll', {}); const k = x.key || x.id; if (q <= 0) delete c[k]; else c[k].qty = q; store.set('coll', c); histAdd(collTotals(Object.values(c)).now); renderColl(); };
     m.addEventListener('click', () => upd(x.qty - 1)); pl.addEventListener('click', () => upd(x.qty + 1));
+    // tryck på kortet: stor bild och all information (antal-knapparna fungerar som förut)
+    d.tabIndex = 0; d.setAttribute('role', 'button'); d.setAttribute('aria-label', 'Visa ' + x.name);
+    const open = () => showDetail({ id: x.id, name: x.name, number: x.number, total: x.total, setName: x.set, img: x.img, detailed: false, pick: x.holo ? 'holo' : 'auto', cond: x.cond || 'NM', owned: x.qty });
+    d.addEventListener('click', e => { if (!e.target.closest('.qty')) open(); });
+    d.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && !e.target.closest('.qty')){ e.preventDefault(); open(); } });
     g.appendChild(d);
   });
 }
