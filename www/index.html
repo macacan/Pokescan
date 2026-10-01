@@ -741,7 +741,39 @@ async function tcsvPrices(c){
   for (const x of rows) tp[tcsvSub(x.subTypeName)] = { lowPrice: x.lowPrice, midPrice: x.midPrice, highPrice: x.highPrice, marketPrice: x.marketPrice, directLowPrice: x.directLowPrice };
   return { cm: null, tp };
 }
-/* Fyll på pris från reservkällor om TCGdex saknar det: 1) pokemontcg.io, 2) TCGCSV */
+/* Dagliga priser för alla kort (samlas in en gång per dygn av GitHub Actions, se tools/build-prices.mjs). En fil, inga anrop per kort. */
+const PB = 'https://raw.githubusercontent.com/macacan/Pokescan/prices/';
+let bookP = null;
+async function pbJson(key, file, ttl){
+  const c = await idb.get(key);
+  if (c && Date.now() - c.t < ttl) return c.v;
+  try {
+    const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 15000);
+    const r = await fetch(PB + file, { signal: ctl.signal, cache: 'no-cache' }).finally(() => clearTimeout(to));
+    if (!r.ok) throw 0;
+    const v = await r.json(); idb.set(key, { t: Date.now(), v }); return v;
+  } catch { return c ? c.v : null; }
+}
+function loadBook(){ if (!bookP) bookP = pbJson('pb-latest', 'latest.json', 6 * 3600e3).then(b => b && b.c ? b : null); return bookP; }
+async function bookPrices(c){
+  const b = await loadBook(), a = b && b.c[c.id]; if (!a) return null;
+  const v = k => { const i = b.k.indexOf(k); return i >= 0 && a[i] > 0 ? a[i] : null; };
+  const out = { cm: null, tp: null };
+  if (v('e') || v('eh')) out.cm = { updated: b.d, trend: v('e'), avg7: v('e7'), avg30: v('e30'), 'trend-holo': v('eh') };
+  const tp = { updated: b.d }, m = (k, n) => { if (v(k)) tp[n] = { marketPrice: v(k) }; };
+  m('u', 'normal'); m('uh', 'holofoil'); m('ur', 'reverseHolofoil'); m('u1', '1stEditionHolofoil');
+  if (Object.keys(tp).length > 1) out.tp = tp;
+  return out;
+}
+/* Prishistorik dag för dag för ett kort: [[dagar sedan, datum, pris i SEK]] ur hist/<set>.json, eller [] om det finns för få dagar */
+async function bookHistory(c, cur){
+  const sid = setIdOf(c), h = await pbJson('pb-h-' + sid, 'hist/' + sid.replace(/[^a-zA-Z0-9.\-_]/g, '_') + '.json', 6 * 3600e3);
+  const row = h && h.c && h.c[c.id]; if (!row) return [];
+  const a = row[cur === 'USD' ? 1 : 0], now = Date.now(), out = [];
+  h.d.forEach((d, i) => { if (a[i] > 0) out.push([Math.round((now - Date.parse(d)) / 864e5), new Date(d).toLocaleDateString('sv-SE', { day: 'numeric', month: 'short' }), a[i] / 100 * FX[cur]]); });
+  return out.length >= 3 ? out : [];
+}
+/* Fyll på pris om TCGdex saknar det: 0) dagliga prisfilen (direkt), 1) pokemontcg.io, 2) TCGCSV */
 async function fillPrice(c){
   if (!c.detailed || c.priceTried || hasAnyPrice(c)) return;
   c.priceTried = true;
@@ -750,6 +782,8 @@ async function fillPrice(c){
     if (r.cm) c.cm = { ...(c.cm || {}), ...Object.fromEntries(Object.entries(r.cm).filter(([, v]) => v)) };
     if (r.tp) c.tp = { ...(c.tp || {}), ...r.tp };
   };
+  apply(await bookPrices(c).catch(() => null));
+  if (hasAnyPrice(c)) return;
   apply(await ptcgPrices(c).catch(() => null));
   if (hasAnyPrice(c)) return;
   apply(await tcsvPrices(c).catch(() => null));
@@ -833,6 +867,8 @@ async function hydrate(c){
     try { Object.assign(c, norm(await api('/cards/' + encodeURIComponent(c.id)))); c.failed = false; break; }
     catch { c.failed = true; await new Promise(r => setTimeout(r, 400 * (i + 1))); }
   }
+  // TCGdex svarar inte: visa ändå priset från den dagliga prisfilen
+  if (c.failed && (await loadBook())?.c[c.id]){ c.detailed = true; c.cm = c.cm || null; c.tp = c.tp || null; c.variants = c.variants || {}; }
   await fillPrice(c);
 }
 async function loadBatch(my, total){
@@ -944,7 +980,7 @@ async function showDetail(c){
       <p class="src">${p.src ? 'Källa: ' + esc(p.src) + (p.updated ? ' · uppdaterad ' + esc(p.updated) : '') + (p.cond !== 'NM' ? ' · skick ' + esc(p.cond) + ' är en uppskattning' : '') : 'Ingen prisdata finns för det här kortet.'}</p>
       ${p.hasHolo ? `<div class="seg" role="group" aria-label="Utgåva"><button type="button" data-v="normal" aria-pressed="${!p.holo}">Vanlig</button><button type="button" data-v="holo" aria-pressed="${p.holo}">Holo</button></div>` : ''}
       <label class="field cond"><span>Skick</span><select id="condSel">${CONDS.map(([k, n]) => `<option value="${k}"${k === p.cond ? ' selected' : ''}>${k} · ${n}</option>`).join('')}</select></label>
-      ${s.length >= 2 ? '<div class="chart" id="chart"></div>' : ''}
+      <div class="chart" id="chart"${s.length >= 2 ? '' : ' hidden'}></div>
       ${p.metrics.length ? `<div class="metrics">${p.metrics.map(([k,v]) => `<div class="metric"><div class="k">${esc(k)}</div><div class="val">${kr2(v)}</div></div>`).join('')}</div>` : ''}
       ${infoTable(c)}
       <div class="row">
@@ -957,6 +993,12 @@ async function showDetail(c){
   tilt($('#holo'));
   if (p.main != null) countUp(d.querySelector('.price .v'), conv(p.main));
   if (s.length >= 2) drawChart($('#chart'), s);
+  // riktig prishistorik dag för dag (dagliga prisfilen), i samma källa och skick som priset ovan
+  if (p.main != null) bookHistory(c, /TCGplayer/.test(p.src) ? 'USD' : 'EUR').then(hs => {
+    if (curDetail !== c || hs.length < 3) return;
+    const f = condF(p.cond), el = $('#chart'); if (!el) return;
+    el.hidden = false; drawChart(el, hs.map(([d, l, v]) => [d, l, v * f, 'Pris ' + l]));
+  }).catch(() => {});
   d.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => { c.pick = b.dataset.v; showDetail(c); if (list.length) renderGrid(); }));
   $('#condSel').addEventListener('change', e => { c.cond = e.target.value; showDetail(c); if (list.length) renderGrid(); });
   $('#similar')?.addEventListener('click', async () => {
@@ -1047,19 +1089,20 @@ function drawChart(host, s){
   let lo = Math.min(...vals), hi = Math.max(...vals);
   if (hi - lo < hi * 0.04){ lo = hi * 0.92; hi = hi * 1.08; }
   const pad = (hi - lo) * 0.15; lo = Math.max(0, lo - pad); hi += pad;
-  const X = d => L + (30 - d) / 30 * iw, Y = v => T + (1 - (v - lo) / (hi - lo)) * ih;
+  const D = Math.max(30, ...s.map(x => x[0])), many = s.length > 8;
+  const X = d => L + (D - d) / D * iw, Y = v => T + (1 - (v - lo) / (hi - lo)) * ih;
   const ticks = [lo, (lo + hi) / 2, hi];
   const pts = s.map(x => [X(x[0]), Y(x[2])]);
   const line = pts.map((p,i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
   const area = line + ` L${pts[pts.length-1][0].toFixed(1)} ${T+ih} L${pts[0][0].toFixed(1)} ${T+ih} Z`;
-  host.innerHTML = `<h3>Prisutveckling, 30 dagar</h3>
+  host.innerHTML = `<h3>Prisutveckling, ${D} dagar</h3>
     <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Prisutveckling: ${s.map(x => x[1] + ' ' + kr(x[2])).join(', ')}">
       ${ticks.map(v => `<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)" stroke-width="1"/><text x="${L-8}" y="${Y(v)+4}" text-anchor="end">${nf0.format(Math.round(conv(v)))}</text>`).join('')}
       <path d="${area}" fill="var(--accent)" fill-opacity=".10"/>
       <path class="line" d="${line}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-      ${s.map((x,i) => `<text x="${pts[i][0]}" y="${H-8}" text-anchor="${i === 0 ? 'start' : i === s.length-1 ? 'end' : 'middle'}">${x[1]}</text>`).join('')}
+      ${s.map((x,i) => many && i && i !== s.length - 1 && i !== s.length >> 1 ? '' : `<text x="${pts[i][0]}" y="${H-8}" text-anchor="${i === 0 ? 'start' : i === s.length-1 ? 'end' : 'middle'}">${x[1]}</text>`).join('')}
       <line id="cx" y1="${T}" y2="${T+ih}" stroke="var(--ink-3)" stroke-width="1" stroke-dasharray="3 3" opacity="0"/>
-      ${pts.map((p,i) => `<circle cx="${p[0]}" cy="${p[1]}" r="${i === pts.length-1 ? 5 : 4}" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>`).join('')}
+      ${pts.map((p,i) => many && i !== pts.length - 1 ? '' : `<circle cx="${p[0]}" cy="${p[1]}" r="${i === pts.length-1 ? 5 : 4}" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>`).join('')}
       <rect x="${L-10}" y="0" width="${iw+20}" height="${H}" fill="transparent"/>
     </svg><div class="tip" id="tip" hidden></div>`;
   const svg = host.querySelector('svg'), tip = host.querySelector('#tip'), cx = host.querySelector('#cx');
@@ -1069,7 +1112,7 @@ function drawChart(host, s){
     pts.forEach((p,i) => { const dd = Math.abs(p[0] - x); if (dd < bd){ bd = dd; bi = i; } });
     cx.setAttribute('x1', pts[bi][0]); cx.setAttribute('x2', pts[bi][0]); cx.setAttribute('opacity', 1);
     tip.hidden = false;
-    tip.innerHTML = `${kr(s[bi][2])}<small>${s[bi][1] === 'Nu' ? 'Trendpris nu' : 'Snitt ' + s[bi][1].replace(' d',' dagar')}</small>`;
+    tip.innerHTML = `${kr(s[bi][2])}<small>${s[bi][3] || (s[bi][1] === 'Nu' ? 'Trendpris nu' : 'Snitt ' + s[bi][1].replace(' d',' dagar'))}</small>`;
     tip.style.left = Math.min(Math.max(pts[bi][0] / W * r.width, 56), r.width - 56) + 'px';
     tip.style.top = (svg.offsetTop + pts[bi][1] / H * r.height - 12) + 'px';
   };
@@ -2324,7 +2367,7 @@ $('#wipeGo').addEventListener('click', () => {
 
 loadFx(); loadSets(); renderColl(); loadDex().then(() => renderColl()).catch(() => {});
 // Förladda kortdatabasen, bildavtrycken och textläsaren i bakgrunden, så att första skanningen går lika fort som de följande
-setTimeout(() => { loadIndex(); loadArt(); getWorker().catch(() => {}); }, 1500);
+setTimeout(() => { loadIndex(); loadArt(); loadBook(); getWorker().catch(() => {}); }, 1500);
 if ('serviceWorker' in navigator && location.protocol === 'https:' && location.hostname !== 'localhost') navigator.serviceWorker.register('sw.js').catch(() => {});
 window.addEventListener('pagehide', () => { stream?.getTracks().forEach(t => t.stop()); });
 })();

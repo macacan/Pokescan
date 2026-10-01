@@ -20,6 +20,10 @@ Appen jämför kortets konstverk med ett index av bildfingeravtryck (`www/hashes
 
 Textläsaren (Tesseract), dess språkdata och typsnitten ligger i appen (`www/vendor`, `www/fonts`), så inget hämtas från CDN eller Google. Appen pratar bara med TCGdex (kortdata och priser), pokemontcg.io och TCGCSV (reservkällor när TCGdex saknar pris), Frankfurter (växelkurser), PokeAPI (Pokédex-info) och GitHub (Pokémon-bilder), och bara när de behövs.
 
+## Dagliga priser
+
+Arbetsflödet **Uppdatera priser** (`.github/workflows/update-prices.yml`, `tools/build-prices.mjs`) hämtar priser för alla kort en gång per dygn från pokemontcg.io (Cardmarket och TCGplayer) och TCGCSV (TCGplayer) och sparar dem på grenen `prices`: `latest.json` med senaste pris per kort och `hist/<set>.json` med ett pris per dag (180 dagar) för prisdiagrammet. Appen använder filen när TCGdex saknar pris eller inte svarar. Valfritt: lägg en gratis nyckel från pokemontcg.io som hemligheten `POKEMONTCG_API_KEY` för snabbare hämtning.
+
 ## Publicera på Google Play
 
 1. **Skapa en uppladdningsnyckel** (en gång): `keytool -genkeypair -keystore kortkoll-upload.jks -storetype PKCS12 -alias pokescan -keyalg RSA -keysize 2048 -validity 10000`. Spara filen och lösenorden säkert. Den får aldrig checkas in.
