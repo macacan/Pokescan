@@ -280,6 +280,8 @@ dialog.sheet::backdrop{background:rgba(6,10,30,.62);backdrop-filter:blur(4px);-w
 .pf-sort select{min-height:40px;padding:6px 12px;font-size:.9rem}
 .pf-bar .btn{min-height:40px;padding:8px 14px;font-size:.85rem}
 .clist{display:grid;gap:10px}
+.grid2{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.grid2 .tile .n{font-size:.9rem}
 .cgroup{grid-column:1/-1;display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin:14px 2px 0;padding:0 2px 6px;border-bottom:2px solid var(--line)}
 .cgroup:first-child{margin-top:0}
 .cgroup b{font:400 1.15rem var(--display);letter-spacing:.02em}
@@ -1075,7 +1077,7 @@ function addToColl(c){
 
 /* ---------- Portfölj: värde, förändring och diagram ---------- */
 const RANGES = { '7D': 7, '1M': 30, '3M': 90, '6M': 180, 'MAX': 99999 };
-let pfRange = store.get('pfRange', '1M'), collSort = store.get('collSort', 'recent'), collLayout = store.get('collLayout', 'list');
+let pfRange = store.get('pfRange', '1M'), collSort = store.get('collSort', 'recent'), collLayout = store.get('collLayout', 'grid');
 const DAY = 864e5;
 function histAdd(total){
   const h = store.get('hist', []), d = new Date().toISOString().slice(0, 10);
@@ -1158,7 +1160,7 @@ function renderColl(){
   const sorted = items.slice().sort((a, b) => collSort === 'set' ? ((b.setDate || '').localeCompare(a.setDate || '') || String(a.set || '').localeCompare(String(b.set || ''), 'sv') || numKey(a) - numKey(b)) : collSort === 'name' ? a.name.localeCompare(b.name, 'sv') : collSort === 'value' ? (b.sek || 0) * b.qty - (a.sek || 0) * a.qty : String(b.added || '').localeCompare(String(a.added || '')));
   document.querySelectorAll('#collLayout button').forEach(b => b.setAttribute('aria-pressed', b.dataset.l === collLayout));
   $('#collSort').value = collSort;
-  const g = $('#collGrid'); g.innerHTML = ''; g.className = collLayout === 'list' ? 'clist' : 'grid';
+  const g = $('#collGrid'); g.innerHTML = ''; g.className = collLayout === 'list' ? 'clist' : 'grid grid2';
   let lastSet = null;
   sorted.forEach(x => {
     if (collSort === 'set' && setIdOf(x) !== lastSet){
